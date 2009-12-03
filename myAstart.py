@@ -26,7 +26,7 @@ class AStarTest:
 			if n.x==x and n.y==y:
 				return i
 		return -1
-	def showPath(self,l):
+	def showPath(self,l,showmark):
 		u"""显示路径"""
 		tm=[]
 		for i in self.map:
@@ -34,7 +34,7 @@ class AStarTest:
 		for i in self.closedlist:
 			tm[i.y][i.x]=' '
 		for i in l:
-			tm[i.y][i.x]='X'
+			tm[i.y][i.x]=showmark
 		for i in tm:
 			print ''.join(i)
 	def SubNode(self,node,to_x,to_y):
@@ -61,13 +61,22 @@ class AStarTest:
 		"""
 		if from_x==None or from_x==None or to_x==None or to_y==None: # 需要从图中找到起点和终点
 			(from_x,from_y),(to_x,to_y)=self.getFromTo(coord_marks)
-
 		print "(%d,%d)->(%d,%d)"%(from_x,from_y,to_x,to_y)
-		# 起始节点必为当前节点
-		curCoord=Node(None,from_x,from_y,0)
-		self.closedlist.append(curCoord)
-		while True: # 重复如下的工作：
-			# a) 对相邻的8格中的每一个
+
+		self.openlist.append(Node(None,from_x,from_y,0))
+		while self.openlist: # 重复如下的工作：
+			# a) 寻找开启列表中F值最低的格子。我们称它为当前格。
+			minf,minidx,curCoord=1000000,-1,None # 假设当前最新f为1000000
+			for i,n in enumerate(self.openlist):
+				if n.g+n.h<minf:
+					minf=n.g+n.h
+					curCoord=n
+					minidx=i
+			# b) 把它切换到关闭列表。
+			del self.openlist[minidx]
+			self.closedlist.append(curCoord)
+
+			# c) 对相邻的8格中的每一个
 			for item in self.SubNode(curCoord,to_x,to_y):
 				# 如果它不在开启列表中，把它添加进去。把当前格作为这一格的父节点。
 				# 记录这一格的F,G,和H值。
@@ -86,7 +95,7 @@ class AStarTest:
 							if o.x==from_x and o.y==from_y:
 								del self.closedlist[i]
 								break
-						self.showPath(l[1:-1])
+						self.showPath(l[1:-1],show_mark)
 						return True
 
 				# 如果它已经在开启列表中，用G值为参考检查新的路径是否更好。更低的G值
@@ -98,16 +107,6 @@ class AStarTest:
 						self.openlist[i].parent=curCoord
 						self.openlist[i].g=item.g
 
-			# b) 寻找开启列表中F值最低的格子。我们称它为当前格。
-			minf,minidx,curCoord=1000000,-1,None # 假设当前最新f为1000000
-			for i,n in enumerate(self.openlist):
-				if n.g+n.h<minf:
-					minf=n.g+n.h
-					curCoord=n
-					minidx=i
-			# c) 把它切换到关闭列表。
-			del self.openlist[minidx]
-			self.closedlist.append(curCoord)
 
 		print "no path found!"
 		return False
@@ -158,7 +157,7 @@ def run():
 	'#..........................................................#',
 	'############################################################']
 	t=AStarTest(len(m[0]),len(m),m)
-	t.getPath(None,None,None,None,'SE','X')
+	t.getPath(None,None,None,None,'SE','o')
 
 if __name__=='__main__':
 	import sys
