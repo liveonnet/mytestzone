@@ -23,37 +23,17 @@ class Node(object):
 		# 根据target节点计算H值
 		# H值取本节点与目的节点间直线距离的1.2倍
 		self.h=sqrt(pow(x-target[0],2)+pow(y-target[1],2))*1.2
-	def updateG(self,simple=True):
+	def updateG(self):
 		u"""根据父节点更新G值,simple指示是否直接使用父节点的g值
 		"""
-		if simple:
-			if self.parent:
-				self.g=self.parent.g
-				if self.x==self.parent.x or self.y==self.parent.y: # 不是斜角节点
-					self.g+=10
-				else:		self.g+=14
-		else:
-			self.g=0
-			p=self.parent
-			while p:
-				if self.x==p.x or self.y==p.y: # 不是斜角节点
-					self.g+=10
-				else:		self.g+=14
-				p=p.parent
-		return self.g
-	def setParent(self,parent):
-		u"""重新设置父节点并更新G值"""
-		#if self.parent!=parent:
-		self.parent=parent
-		self.updateG()
+		if self.x==self.parent.x or self.y==self.parent.y: # 不是斜角节点
+			self.g=1.0+self.parent.g
+		else:	self.g=1.4+self.parent.g
 	def __eq__(self,other):
-		if isinstance(other,tuple):
+		try:
 			return other[0]==self.x and other[1]==self.y
-		elif isinstance(other,Node):
+		except TypeError:
 			return (self.x==other.x) and (self.y==other.y)
-		else: 	return False
-	def __repr__(self):
-		return 'Node<(%d,%d),%d+%d=%d>'%(self.x,self.y,self.g,self.h,self.g+self.h)
 
 class AStarTest(object):
 	def __init__(self,map_max_x,map_max_y,map_array,unreachable_marks):
@@ -103,7 +83,6 @@ class AStarTest(object):
 		logging.info(u"起点 %s 终点 %s",from_coord,to_coord)
 		self.to_coord=to_coord
 		curCoord=None
-		currGoodG=0 # 记录当前最好的G值
 		# 1 把起始格添加到开启列表。
 		self.openlist.append(Node(None,*from_coord,target=self.to_coord))
 		while self.openlist: # 重复如下的工作：
@@ -114,25 +93,22 @@ class AStarTest(object):
 			self.openlist.remove(curCoord)
 			self.closedlist.append(curCoord)
 
-			subs=list(self.getSubNode(curCoord))
-			#pprint(subs)
 			# c) 对相邻的8格中的每一个
-			for item in subs:
+			for item in self.getSubNode(curCoord):
 				# 如果它不在开启列表中，把它添加进去。把当前格作为这一格的父节点。
 				# 记录这一格的F,G,和H值。
+				item.updateG()
 				if item not in self.openlist:
 					self.openlist.append(item)
-					item.updateG()
 					if item==to_coord:
 						# 保存路径。从目标格开始，沿着每一格的父节点移动直到回到起始格。这就是你的路径。
-						logging.info(u"找到路径 %d/%d",item.updateG(),item.updateG(False))
-						l=[item,]
+						logging.info(u"找到路径 %d",item.g)
+						l=[item]
 						p=item.parent
 						while p:
 							l.append(p)
 							p=p.parent
-						l.reverse()
-						self.showPath(l,show_mark)
+						self.showPath(l[1:-1],show_mark)
 						return
 
 				# 如果它已经在开启列表中，用G值为参考检查新的路径是否更好。更低的G值
@@ -141,38 +117,30 @@ class AStarTest(object):
 				# 你可能需要重新对开启列表排序。
 				else:
 					#logging.debug(u"%s 已经在开启列表中了",item)
-					tmpG=self.calcG(item,curCoord) # 以当前节点curCorrd为item暂时的父节点计算G值
-					if tmpG<currGoodG or currGoodG==0:
+					existing=self.openlist[self.openlist.index(item)]
+					if item.g<existing.g:
 						#logging.debug(u"发现更好的路径")
-						item.setParent(curCoord)
+						existing.parent=curCoord
+						existing.g=item.g
 		logging.info(u"没有找到路径!")
 
 	def findCurNode(self):
 		u"""寻找开启列表中F值最低的格子"""
 		return min(self.openlist,key=lambda x:x.g+x.h)
 
-
-	def calcG(self,item,curCoord):
-		u"""计算当节点item以节点curCoord为父节点时的G值"""
-		g=curCoord.g
-		if item.x==curCoord.x or item.y==curCoord.y: # 不是斜角节点
-			g+=10
-		else:	g+=14
-		return g
-
 	def showPath(self,path,mark='X'):
 		u"""以图形方式显示路径"""
+		tmpmap=[]
+		for i in self.map:
+			tmpmap.append(list(i))
+		for item in self.closedlist:
+			tmpmap[item.y][item.x]=' '
+		for item in path:
+			tmpmap[item.y][item.x]=mark
+
 		s=StringIO()
-		for idxy,i in enumerate(self.map):
-			for idxx,j in enumerate(i):
-				if (idxx,idxy) in path: # 在路径中
-					if (idxx,idxy) in [path[0],path[len(path)-1]]: # 是起点和终点则原样输出
-						s.write('%s'%(j,))
-					else:
-						s.write('%s'%(mark,))
-				else:
-					s.write('%s'%(j,))
-			s.write('\n')
+		for i in tmpmap:
+			s.write("%s\n"%(''.join(i)))
 		logging.info(u"\n%s",s.getvalue())
 		s.close()
 
