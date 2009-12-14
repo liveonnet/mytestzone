@@ -298,9 +298,9 @@ class Kaixin(object):
 				if m:
 					all=m.group('all')
 					left=int(m.group('left'))
-					if crops.find(u'已偷过')==-1 and crops.find(u'已枯死')==-1:
+					if crops.find(u'已摘过')==-1 and crops.find(u'已枯死')==-1:
 
-						n=re.search(ur'再过(\d+小时)?(\d+分)?(\d+秒)?可偷',crops)
+						n=re.search(ur'再过(\d+小时)?(\d+分)?(\d+秒)?可采摘',crops)
 						if n:
 							logging.info(u"地块 %s %s(%s) 在防偷期! (%s)",farmnum,name,seedid,crops)
 
@@ -332,7 +332,7 @@ class Kaixin(object):
 							logging.info(u"(可偷) %d/%s (地块%s--%s(%s)--%s)",left,all,farmnum,name,seedid,crops)
 							self.crops2steal.append((farmnum,seedid,fuid))
 					else:
-						#logging.info(u"地块 %s %s(%s) 已偷过/已枯死 (%s)",farmnum,name,seedid,crops)
+						#logging.info(u"地块 %s %s(%s) 已摘过/已枯死 (%s)",farmnum,name,seedid,crops)
 						pass
 				else:
 					pass
@@ -363,7 +363,7 @@ class Kaixin(object):
 				items=tree.xpath('account/yh_stealinfo')
 				if items:
 					stealinfo=items[0].text
-					if stealinfo.find(u'已偷过')!=-1:
+					if stealinfo.find(u'已摘过')!=-1:
 						logging.info(u"蜂蜜 已偷过! (%s)",stealinfo)
 				else:
 					logging.info(u"(可偷) 洋槐蜂蜜 %s, 枸杞蜂蜜 %s, 党参蜂蜜 %s, count/total/sum=%s/%s/%s",
@@ -401,19 +401,20 @@ class Kaixin(object):
 				toend.append((farmnum,seedid,fuid))
 		if foundStramonium:
 			for i in toend:	tosteal.remove(i)
-			for i in toend:	tosteal.append(i)
-			t=StringIO()
-			pprint(tosteal,t)
-			logging.info(u"found Stramonium\n%s",t.getvalue())
-			t.close()
+			#for i in toend:	tosteal.append(i) # 注释掉以避免偷取曼陀罗类作物
+			#t=StringIO()
+			#pprint(tosteal,t)
+			#logging.info(u"found Stramonium\n%s",t.getvalue())
+			#t.close()
 
-		for farmnum,seedid,fuid in tosteal:
+		for idx,(farmnum,seedid,fuid) in enumerate(tosteal):
 			rslt=self.stealOneCrop(farmnum,seedid,fuid)
 			if rslt==False: # 被反外挂检测到
 				break
-			sleeptime=uniform(3,7)
-			logging.debug(u"延迟%f秒以逃避反外挂检测...",sleeptime)
-			time.sleep(sleeptime)
+			if idx!=len(tosteal)-1:
+				sleeptime=uniform(3,7)
+				logging.debug(u"延迟%f秒以逃避反外挂检测...",sleeptime)
+				time.sleep(sleeptime)
 
 		return True
 
@@ -491,7 +492,6 @@ class Kaixin(object):
 
 		cnt=0
 		for fname,fuid in self.friends4ranch:
-			if fuid==u"1454240":		continue # 跳过
 			cnt+=1
 			logging.info(u" %02d) 检查 %s(%s)... ",cnt,fname,fuid)
 			r = self.getResponse('http://www.kaixin001.com/house/ranch/getconf.php',
@@ -527,10 +527,10 @@ class Kaixin(object):
 					m=re.search(p,tips)
 					if m:
 						left_from_tips=m.group('left')
-						if tips.find(u'距下次可偷还有')!=-1:
+						if tips.find(u'距下次可收获还有')!=-1:
 							logging.debug(u"%s 已偷过! (%s)",pname,tips)
 							continue
-						n=re.search(ur'再过(\d+小时)?(\d+分)?(\d+秒)?可偷',tips)
+						n=re.search(ur'再过(\d+小时)?(\d+分)?(\d+秒)?可收获',tips)
 						if n:
 							rawscd=(n.group(1) and [n.group(1)] or [''])[0]\
 								+(n.group(2) and [n.group(2)] or [''])[0]\
@@ -989,10 +989,10 @@ class Kaixin(object):
 				m=re.search(p,tips)
 				if m:
 					left_from_tips=m.group('left')
-					if tips.find(u'距下次可偷还有')!=-1:
+					if tips.find(u'距下次可收获还有')!=-1:
 						logging.info(u"%s %s 已偷过! (%s)",task_key,pname,tips)
 						return
-					n=re.search(ur'再过(\d+小时)?(\d+分)?(\d+秒)?可偷',tips)
+					n=re.search(ur'再过(\d+小时)?(\d+分)?(\d+秒)?可收获',tips)
 					if n:
 						logging.info(u"%s %s 在防偷期! (%s)",task_key,pname,tips)
 
@@ -1071,12 +1071,11 @@ class Kaixin(object):
 					scd*=2
 					if i!=trycnt-1:
 						if i==trycnt-2:
-							scd=50 # 60 50 succ
+							scd=70 # 60 50 succ
 						logging.info(u"第 %d 次偷取失败, %.2f 秒后再次尝试偷取(%s,%s,%s)...",i+1,scd,i_fuid,skey,i_typetext)
 					else:
 						logging.info(u"第 %d 次偷取失败, 停止尝试.",i+1)
 						break
-					time.sleep(scd)
 					if i==trycnt-2:
 						tmpr = self.getResponse('http://www.kaixin001.com/house/ranch/getconf.php',
 								{'verify':self.verify,'fuid':i_fuid})
@@ -1084,7 +1083,7 @@ class Kaixin(object):
 						tmpret=tmptree.xpath('ret')[0].text
 						if tmpret!=u'succ':
 							logging.error(u"===>%s (debug)重新获取牧场信息失败!!! ret=%s (%s)",task_key,tmpret,etree.tostring(tmptree,encoding='gbk'))
-
+					time.sleep(scd)
 				else:
 					break
 
@@ -1145,9 +1144,9 @@ class Kaixin(object):
 			if m:
 				all=m.group('all')
 				left=int(m.group('left'))
-				if crops.find(u'已偷过')==-1 and crops.find(u'已枯死')==-1 and left>1:
+				if crops.find(u'已摘过')==-1 and crops.find(u'已枯死')==-1 and left>1:
 
-					n=re.search(ur'再过(\d+小时)?(\d+分)?(\d+秒)?可偷',crops)
+					n=re.search(ur'再过(\d+小时)?(\d+分)?(\d+秒)?可采摘',crops)
 					if n:
 						logging.info(u"%s (%s)%s 在防偷期! (%s)",task_key,seedid,name,crops)
 
