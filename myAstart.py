@@ -4,22 +4,24 @@ class Node:
 	def __init__(self,parent,x,y,h):
 		self.parent=parent
 		self.x,self.y=x,y
+		self.hv = (x << 16) ^ y
 		self.g,self.h=0,h
 	def __repr__(self):
 		return '(%d,%d)'%(self.x,self.y)
+	def __eq__(self,other):
+		return self.hv == other.hv
+	def __hash__(self):
+		return self.hv
 
 class AStarTest:
 	def __init__(self,map_max_x,map_max_y,map):
-		self.openlist,self.closedlist=[],[]
+		self.openlist,self.closedlist=[],Set()
 		self.mapMaxX,self.mapMaxY=map_max_x,map_max_y
 		print '%d %d'%(self.mapMaxX,self.mapMaxY)
 		self.map=map
 	def inCloseList(self,x,y):
 		u"""检查(x,y)是否在closedlist中"""
-		for n in self.closedlist:
-			if n.x==x and n.y==y:
-				return True
-		return False
+		return Node(None,x,y,0) in self.closedlist
 	def inOpenList(self,x,y):
 		u"""检查(x,y)是否在openlist中"""
 		for i,n in enumerate(self.openlist):
@@ -74,7 +76,7 @@ class AStarTest:
 					minidx=i
 			# b) 把它切换到关闭列表。
 			del self.openlist[minidx]
-			self.closedlist.append(curCoord)
+			self.closedlist.add(curCoord)
 
 			# c) 对相邻的8格中的每一个
 			for item in self.SubNode(curCoord,to_x,to_y):
@@ -91,9 +93,9 @@ class AStarTest:
 						while p:
 							l.append(p)
 							p=p.parent
-						for i,o in enumerate(self.closedlist):# 为显示起始节点本来的字符而删掉起始节点
+						for o in self.closedlist:# 为显示起始节点本来的字符而删掉起始节点
 							if o.x==from_x and o.y==from_y:
-								del self.closedlist[i]
+								self.closedlist.remove(o)
 								break
 						self.showPath(l[1:-1],show_mark)
 						return True
@@ -162,4 +164,11 @@ def run():
 if __name__=='__main__':
 	import sys
 	from math import sqrt
-	run()
+	from sets import Set
+	import cProfile,pstats
+	cProfile.run('run()')
+	#cProfile.run('run()','d:\\p.txt')
+	#p=pstats.Stats('d:\\p.txt')
+	#p.sort_stats('time', 'cum').print_stats(.5, 'inCloseList')
+	#p.sort_stats('time', 'cum').print_stats()
+	#run()
