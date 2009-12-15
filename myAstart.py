@@ -9,7 +9,7 @@ class Node:
 	def __repr__(self):
 		return '(%d,%d)'%(self.x,self.y)
 	def __eq__(self,other):
-		return self.hv == other.hv
+		return self.hv == other
 	def __hash__(self):
 		return self.hv
 
@@ -21,7 +21,7 @@ class AStarTest:
 		self.map=map
 	def inCloseList(self,x,y):
 		u"""检查(x,y)是否在closedlist中"""
-		return Node(None,x,y,0) in self.closedlist
+		return (x << 16) ^ y in self.closedlist
 	def inOpenList(self,x,y):
 		u"""检查(x,y)是否在openlist中"""
 		for i,n in enumerate(self.openlist):
@@ -166,9 +166,9 @@ if __name__=='__main__':
 	from math import sqrt
 	from sets import Set
 	import cProfile,pstats
-	cProfile.run('run()')
-	#cProfile.run('run()','d:\\p.txt')
-	#p=pstats.Stats('d:\\p.txt')
+	#cProfile.run('run()')
+	cProfile.run('run()','d:\\p.txt')
+	p=pstats.Stats('d:\\p.txt')
 	#p.sort_stats('time', 'cum').print_stats(.5, 'inCloseList')
-	#p.sort_stats('time', 'cum').print_stats()
+	p.sort_stats('time', 'cum').print_stats()
 	#run()
