@@ -38,7 +38,7 @@ class Kaixin(object):
 		if self.logdir:
 			if not os.path.isabs(self.logdir):
 				self.logdir=os.path.join(self.curdir,self.logdir)
-			self.logfile=os.path.join(self.logdir,'d:\kaixin-%s.log'%(time.strftime('%Y%m%d'),))
+			self.logfile=os.path.join(self.logdir,'kaixin-%s.log'%(time.strftime('%Y%m%d'),))
 			logging.basicConfig(level=logging.DEBUG,
 		#			format="%(asctime)s %(levelname)s %(funcName)s | %(message)s",
 				  format='%(asctime)s %(thread)d %(levelname)s %(funcName)s %(lineno)d | %(message)s',
@@ -125,6 +125,8 @@ class Kaixin(object):
 		self.crops2steal=[] # 待偷的作物列表
 
 		self.tasklist={} # 定时任务
+
+		self.statistics={} # 统计收获
 
 		self.verify=''
 
@@ -364,7 +366,7 @@ class Kaixin(object):
 				if items:
 					stealinfo=items[0].text
 					if stealinfo.find(u'已摘过')!=-1:
-						logging.info(u"蜂蜜 已偷过! (%s)",stealinfo)
+						logging.info(u"蜂蜜 已摘过! (%s)",stealinfo)
 				else:
 					logging.info(u"(可偷) 洋槐蜂蜜 %s, 枸杞蜂蜜 %s, 党参蜂蜜 %s, count/total/sum=%s/%s/%s",
 						count_a,count_b,count_c,count,total,sumtext)
@@ -455,6 +457,7 @@ class Kaixin(object):
 			seedname=tree.xpath('seedname')[0].text
 			logging.debug(u"%s anti=%s,leftnum=%s,stealnum=%s,num=%s,seedname=%s",tasklogstring,anti,leftnum,stealnum,num,seedname)
 			logging.info(u"===> %s *** 成功偷取 %s(%s)的 %s %s",tasklogstring,self.friends[fuid],fuid,stealnum,seedname)
+			self.statistics[seedname]=self.statistics.get(seedname,0)+int(stealnum)
 		except IndexError:
 			logging.error(u"===> %s 解析结果失败!!! \n%s",tasklogstring,etree.tostring(tree,encoding='gbk'))
 
@@ -528,15 +531,15 @@ class Kaixin(object):
 					if m:
 						left_from_tips=m.group('left')
 						if tips.find(u'距下次可收获还有')!=-1:
-							logging.debug(u"%s 已偷过! (%s)",pname,tips)
+							logging.debug(u"%s 已收获过! (%s)",pname,tips)
 							continue
-						n=re.search(ur'再过(\d+小时)?(\d+分)?(\d+秒)?可收获',tips)
+						n=re.search(ur'再过(\d+小时)?(\d+分)?(\d+秒)?好友可收获',tips)
 						if n:
 							rawscd=(n.group(1) and [n.group(1)] or [''])[0]\
 								+(n.group(2) and [n.group(2)] or [''])[0]\
 								+(n.group(3) and [n.group(3)] or [''])[0]
 
-							logging.info(u"%s 在防偷期, 再过 %s 可偷! (%s)",pname,rawscd,tips)
+							logging.info(u"%s 在防偷期, 再过 %s 可收获! (%s)",pname,rawscd,tips)
 
 							scd=self.getSleepTime(n.groups())
 							if scd<self.internal: # 下次轮询前不需要执行则不加入定时任务
@@ -568,6 +571,10 @@ class Kaixin(object):
 					if bproduct!='1':
 						continue
 					skey=i.xpath('skey')[0].text
+					if skey not in self.animallist: # 未知副产品
+						logging.info(u"未知牧场品种 %s(%s)",skey,etree.tostring(i,encoding='gbk'))
+						continue # 因为不知道名字，所以不处理
+
 					tips=i.xpath('tips')[0].text
 					m=re.search(pproduct,tips)
 					if m:
@@ -629,6 +636,7 @@ class Kaixin(object):
 			res_skey=tree.xpath('skey')[0].text
 			logging.debug(u"%s action=%s,num=%s,skey=%s,ptype=%s",tasklogstring,res_action,res_num,res_skey,res_ptype)
 			logging.info(u"===> %s *** 成功偷取 %s %s~",tasklogstring,res_num,self.animallist[res_skey][1])
+			self.statistics[self.animallist[res_skey][1]]=self.statistics.get(self.animallist[res_skey][1],0)+int(res_num)
 		except IndexError:
 			logging.error(u"===> %s 解析结果失败!!! \n%s",tasklogstring,etree.tostring(tree,encoding='gbk'))
 			return False
@@ -641,6 +649,8 @@ class Kaixin(object):
 			if self.bGetGranaryInfo:
 				self.getGranaryInfo()
 				#self.saveCfg()
+				self.bGetGranaryInfo=False
+				logging.info(u"重新设置 getgranaryinfo=False")
 				break
 
 			if self.bStealCrop:
@@ -667,6 +677,12 @@ class Kaixin(object):
 			v.cancel()
 		self.tasklist.clear()
 
+		if len(self.statistics)!=0:
+			stat=StringIO()
+			for k,v in self.statistics.iteritems():
+				stat.write("\n%s: %d"%(k,v))
+			logging.info(u"统计: %s",stat.getvalue())
+			stat.close()
 		logging.info(u"执行完毕.")
 		time.sleep(1)
 
@@ -925,6 +941,8 @@ class Kaixin(object):
 		animallist=animallist.replace(u'],"'.encode('utf8'),u'],\n"'.encode('utf8')) # 一个item占一行便于手工编辑
 		self.cfg.set('account','animallist',animallist)
 
+		self.cfg.set('account','getgranaryinfo',unicode(self.bGetGranaryInfo))
+
 		self.cfg.write(codecs.open(self.inifile,'w','utf-8-sig'))
 
 	def getSleepTime(self,n):
@@ -992,7 +1010,7 @@ class Kaixin(object):
 					if tips.find(u'距下次可收获还有')!=-1:
 						logging.info(u"%s %s 已偷过! (%s)",task_key,pname,tips)
 						return
-					n=re.search(ur'再过(\d+小时)?(\d+分)?(\d+秒)?可收获',tips)
+					n=re.search(ur'再过(\d+小时)?(\d+分)?(\d+秒)?好友可收获',tips)
 					if n:
 						logging.info(u"%s %s 在防偷期! (%s)",task_key,pname,tips)
 
@@ -1071,7 +1089,7 @@ class Kaixin(object):
 					scd*=2
 					if i!=trycnt-1:
 						if i==trycnt-2:
-							scd=70 # 60 50 succ
+							scd=50 # 60 50 succ
 						logging.info(u"第 %d 次偷取失败, %.2f 秒后再次尝试偷取(%s,%s,%s)...",i+1,scd,i_fuid,skey,i_typetext)
 					else:
 						logging.info(u"第 %d 次偷取失败, 停止尝试.",i+1)
@@ -1287,5 +1305,9 @@ if __name__=='__main__':
 	import socket
 	import sys
 
-	i=Kaixin(ur'd:\kaixin.ini')
-	i.run()
+	#i=Kaixin(ur'd:\kaixin.ini')
+	#i.run()
+	import cProfile,pstats
+	cProfile.run('''Kaixin(ur'd:\kaixin.ini').run()''',ur'd:\kaixin-profile.txt')
+	p=pstats.Stats(ur'd:\kaixin-profile.txt')
+	p.sort_stats('time', 'cum').print_stats('kaixin')
