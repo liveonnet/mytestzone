@@ -65,7 +65,7 @@ class World(object):
 			return None
 	def process(self, time_passed):
 		time_passed_seconds = time_passed / 1000.0
-		for entity in self.entities.values():
+		for entity in list(self.entities.values()):
 			entity.process(time_passed_seconds)
 		new_to_del=[]
 		for i,j in self.to_del:
@@ -77,12 +77,12 @@ class World(object):
 		surface.blit(self.background, (0, 0))
 		for dummy,entity in self.to_del:
 			entity.render(surface)
-		for entity in self.entities.itervalues():
+		for entity in self.entities.values():
 			entity.render(surface)
 
 	def get_close_entity(self, name, location, range=100.):
 		location = Vector2(*location)
-		for entity in self.entities.itervalues():
+		for entity in self.entities.values():
 			if entity.name == name:
 				distance = location.get_distance_to(entity.location)
 				if distance < range:
@@ -90,7 +90,7 @@ class World(object):
 		return None
 	def get_close_enemy(self,stance,location,range=100.):
 		location = Vector2(*location)
-		for entity in self.entities.itervalues():
+		for entity in self.entities.values():
 			if entity.stance()==None:
 				continue
 			if entity.stance()!=stance:
@@ -146,7 +146,7 @@ class GameEntity(object):
 			travel_distance = min(distance_to_destination, time_passed * self.speed)
 			self.location += travel_distance * heading
 	def stance(self):
-		u"""立场"""
+		"""立场"""
 		return None
 
 class Leaf(GameEntity):
@@ -454,7 +454,7 @@ def run():
 	world.add_entity(nestB)
 
 	# Add all our ant entities
-	for ant_no in xrange(ANT_COUNT):
+	for ant_no in range(ANT_COUNT):
 		ant = Ant(world, choice([nestA,nestB]),ant_image)
 		ant.location = Vector2(randint(0, w), randint(0, h))
 		ant.brain.set_state("exploring")
