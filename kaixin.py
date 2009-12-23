@@ -600,14 +600,20 @@ class Kaixin(object):
 						if scd<self.internal:
 							k='ranch-p-%s-%s-%s'%(fuid,skey,'0')
 							if k in self.tasklist: # 相同的任务已经存在
-								logging.info(u"更新前删除相同任务")
-								self.tasklist[k].cancel()
-								del self.tasklist[k]
+								if getattr(self.tasklist[k],'sleeptime',0)>scd: # 已存在的相同任务的等待时间更长,则替换为等待时间短的
+									logging.info(u"更新前删除相同任务")
+									self.tasklist[k].cancel()
+									del self.tasklist[k]
+								else: # 已存在的相同任务的等待时间已经是最短的，不必更新
+									logging.info(u"相同任务已经存在%s(%d<=%d)，略过",k,getattr(self.tasklist[k],'sleeptime',0),scd)
+									continue # 不更新
 							logging.info(u"加入定时执行队列 key=%s %d (%s,%s,%s)",k,scd,fuid,skey,'0')
 							if scd<60:
 								t=Timer(scd+0.15, self.stealRanchProduct,(fuid,skey,'0',k))
+								t.sleeptime=scd
 							else:
 								t=Timer(scd,self.task_ranch,(fuid,skey,'0',k))
+								t.sleeptime=scd
 							t.start()
 							self.tasklist[k]=t
 
@@ -689,7 +695,7 @@ class Kaixin(object):
 		if len(self.statistics)!=0:
 			stat=StringIO()
 			for k,v in self.statistics.iteritems():
-				stat.write(u"\n%s: %d"%(k.decode('utf8'),v))
+				stat.write(u"%s: %d\t"%(k.decode('utf8'),v))
 			logging.info(u"统计: %s",stat.getvalue())
 			stat.close()
 			self.statistics.close()
