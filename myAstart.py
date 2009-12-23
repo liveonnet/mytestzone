@@ -15,21 +15,21 @@ class Node:
 
 class AStarTest:
 	def __init__(self,map_max_x,map_max_y,map):
-		self.openlist,self.closedlist=[],Set()
+		self.openlist,self.closedlist=[],set()
 		self.mapMaxX,self.mapMaxY=map_max_x,map_max_y
-		print '%d %d'%(self.mapMaxX,self.mapMaxY)
+		print('%d %d'%(self.mapMaxX,self.mapMaxY))
 		self.map=map
 	def inCloseList(self,x,y):
-		u"""检查(x,y)是否在closedlist中"""
+		"""检查(x,y)是否在closedlist中"""
 		return (x << 16) ^ y in self.closedlist
 	def inOpenList(self,x,y):
-		u"""检查(x,y)是否在openlist中"""
+		"""检查(x,y)是否在openlist中"""
 		for i,n in enumerate(self.openlist):
 			if n.x==x and n.y==y:
 				return i
 		return -1
 	def showPath(self,l,showmark):
-		u"""显示路径"""
+		"""显示路径"""
 		tm=[]
 		for i in self.map:
 			tm.append(list(i))
@@ -38,9 +38,9 @@ class AStarTest:
 		for i in l:
 			tm[i.y][i.x]=showmark
 		for i in tm:
-			print ''.join(i)
+			print(''.join(i))
 	def SubNode(self,node,to_x,to_y):
-		u""" 返回节点node的有效子节点"""
+		""" 返回节点node的有效子节点"""
 		subList=[
 			(node.x-1,node.y-1),(node.x,node.y-1),(node.x+1,node.y-1),\
 			(node.x-1,node.y),                    (node.x+1,node.y),\
@@ -55,7 +55,7 @@ class AStarTest:
 					yield item
 
 	def getPath(self,from_x,from_y,to_x,to_y,coord_marks,show_mark):
-		u"""获取两点间的路径
+		"""获取两点间的路径
 		from_coord 起点
 		to_coord 终点
 		coord_marks 起点终点标志字符
@@ -63,7 +63,7 @@ class AStarTest:
 		"""
 		if from_x==None or from_x==None or to_x==None or to_y==None: # 需要从图中找到起点和终点
 			(from_x,from_y),(to_x,to_y)=self.getFromTo(coord_marks)
-		print "(%d,%d)->(%d,%d)"%(from_x,from_y,to_x,to_y)
+		print("(%d,%d)->(%d,%d)"%(from_x,from_y,to_x,to_y))
 
 		self.openlist.append(Node(None,from_x,from_y,0))
 		while self.openlist: # 重复如下的工作：
@@ -87,7 +87,7 @@ class AStarTest:
 					self.openlist.append(item)
 					# 保存路径。从目标格开始，沿着每一格的父节点移动直到回到起始格。这就是你的路径。
 					if item.x==to_x and item.y==to_y:
-						print "found %d,len(closedlist)=%d"%(item.g,len(self.closedlist))
+						print("found %d,len(closedlist)=%d"%(item.g,len(self.closedlist)))
 						l=[item]
 						p=item.parent
 						while p:
@@ -110,10 +110,10 @@ class AStarTest:
 						self.openlist[i].g=item.g
 
 
-		print "no path found!"
+		print("no path found!")
 		return False
 	def getFromTo(self,marks):
-		u"""从图中找到标为marks[0]的点作为起点，marks[1]的点作为终点"""
+		"""从图中找到标为marks[0]的点作为起点，marks[1]的点作为终点"""
 		from_coord,to_coord=None,None
 		for idxy,i in enumerate(self.map):
 			for idxx,j in enumerate(i):
@@ -164,7 +164,6 @@ def run():
 if __name__=='__main__':
 	import sys
 	from math import sqrt
-	from sets import Set
 	import cProfile,pstats
 	#cProfile.run('run()')
 	cProfile.run('run()','d:\\p.txt')
