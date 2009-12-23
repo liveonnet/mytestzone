@@ -126,7 +126,11 @@ class Kaixin(object):
 
 		self.tasklist={} # 定时任务
 
-		self.statistics={} # 统计收获
+		# 统计收获
+		if self.logdir:
+			self.statistics=shelve.open(os.path.join(self.logdir,'kaixin.statistics'))
+		else:
+			self.statistics=shelve.open(os.path.join(self.curdir,'kaixin.statistics'))
 
 		self.verify=''
 
@@ -302,7 +306,7 @@ class Kaixin(object):
 					left=int(m.group('left'))
 					if crops.find(u'已摘过')==-1 and crops.find(u'已枯死')==-1:
 
-						n=re.search(ur'再过(\d+小时)?(\d+分)?(\d+秒)?可采摘',crops)
+						n=re.search(ur'再过(\d+小时)?(\d+分)?(\d+秒)?好友可摘',crops)
 						if n:
 							logging.info(u"地块 %s %s(%s) 在防偷期! (%s)",farmnum,name,seedid,crops)
 
@@ -457,7 +461,7 @@ class Kaixin(object):
 			seedname=tree.xpath('seedname')[0].text
 			logging.debug(u"%s anti=%s,leftnum=%s,stealnum=%s,num=%s,seedname=%s",tasklogstring,anti,leftnum,stealnum,num,seedname)
 			logging.info(u"===> %s *** 成功偷取 %s(%s)的 %s %s",tasklogstring,self.friends[fuid],fuid,stealnum,seedname)
-			self.statistics[seedname]=self.statistics.get(seedname,0)+int(stealnum)
+			self.statistics[seedname.encode('utf8')]=self.statistics.get(seedname.encode('utf8'),0)+int(stealnum)
 		except IndexError:
 			logging.error(u"===> %s 解析结果失败!!! \n%s",tasklogstring,etree.tostring(tree,encoding='gbk'))
 
@@ -572,8 +576,13 @@ class Kaixin(object):
 						continue
 					skey=i.xpath('skey')[0].text
 					if skey not in self.animallist: # 未知副产品
-						logging.info(u"未知牧场品种 %s(%s)",skey,etree.tostring(i,encoding='gbk'))
-						continue # 因为不知道名字，所以不处理
+						try:
+							aname=i.xpath('aname')[0].text
+							self.animallist[skey]=[0,aname]
+							logging.info(u"添加未知牧场品种 %s(%s)",skey,aname)
+						except Exception:
+							logging.info(u"未知牧场品种 %s(%s)",skey,etree.tostring(i,encoding='gbk'))
+							continue # 因为不知道名字，所以不处理
 
 					tips=i.xpath('tips')[0].text
 					m=re.search(pproduct,tips)
@@ -636,7 +645,7 @@ class Kaixin(object):
 			res_skey=tree.xpath('skey')[0].text
 			logging.debug(u"%s action=%s,num=%s,skey=%s,ptype=%s",tasklogstring,res_action,res_num,res_skey,res_ptype)
 			logging.info(u"===> %s *** 成功偷取 %s %s~",tasklogstring,res_num,self.animallist[res_skey][1])
-			self.statistics[self.animallist[res_skey][1]]=self.statistics.get(self.animallist[res_skey][1],0)+int(res_num)
+			self.statistics[self.animallist[res_skey][1].encode('utf8')]=self.statistics.get(self.animallist[res_skey][1].encode('utf8'),0)+int(res_num)
 		except IndexError:
 			logging.error(u"===> %s 解析结果失败!!! \n%s",tasklogstring,etree.tostring(tree,encoding='gbk'))
 			return False
@@ -680,9 +689,11 @@ class Kaixin(object):
 		if len(self.statistics)!=0:
 			stat=StringIO()
 			for k,v in self.statistics.iteritems():
-				stat.write("\n%s: %d"%(k,v))
+				stat.write(u"\n%s: %d"%(k.decode('utf8'),v))
 			logging.info(u"统计: %s",stat.getvalue())
 			stat.close()
+			self.statistics.close()
+
 		logging.info(u"执行完毕.")
 		time.sleep(1)
 
@@ -1164,7 +1175,7 @@ class Kaixin(object):
 				left=int(m.group('left'))
 				if crops.find(u'已摘过')==-1 and crops.find(u'已枯死')==-1 and left>1:
 
-					n=re.search(ur'再过(\d+小时)?(\d+分)?(\d+秒)?可采摘',crops)
+					n=re.search(ur'再过(\d+小时)?(\d+分)?(\d+秒)?好友可摘',crops)
 					if n:
 						logging.info(u"%s (%s)%s 在防偷期! (%s)",task_key,seedid,name,crops)
 
@@ -1304,10 +1315,11 @@ if __name__=='__main__':
 	import datetime
 	import socket
 	import sys
+	import shelve
 
 	#i=Kaixin(ur'd:\kaixin.ini')
 	#i.run()
 	import cProfile,pstats
 	cProfile.run('''Kaixin(ur'd:\kaixin.ini').run()''',ur'd:\kaixin-profile.txt')
-	p=pstats.Stats(ur'd:\kaixin-profile.txt')
-	p.sort_stats('time', 'cum').print_stats('kaixin')
+	#p=pstats.Stats(ur'd:\kaixin-profile.txt')
+	#p.sort_stats('time', 'cum').print_stats('kaixin')
