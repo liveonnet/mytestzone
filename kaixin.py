@@ -660,31 +660,30 @@ class Kaixin(object):
 
 	def run(self):
 		#self.getSeedList()
-		while True:
-			if self.bGetGranaryInfo:
-				self.getGranaryInfo()
-				#self.saveCfg()
-				self.bGetGranaryInfo=False
-				logging.info(u"重新设置 getgranaryinfo=False")
-				break
+		try:
+			while True:
+				if self.bGetGranaryInfo:
+					self.getGranaryInfo()
+					#self.saveCfg()
+					self.bGetGranaryInfo=False
+					logging.info(u"重新设置 getgranaryinfo=False")
+					break
 
-			if self.bStealCrop:
-				self.getFriends4garden()
-				self.checkGarden()
-				self.stealCrop()
+				if self.bStealCrop:
+					self.getFriends4garden()
+					self.checkGarden()
+					self.stealCrop()
 
-			if self.bStealRanch:
-				self.getFriends4ranch()
-				self.checkRanch()
+				if self.bStealRanch:
+					self.getFriends4ranch()
+					self.checkRanch()
 
-			logging.info(u"\n%s\n%s %d 秒后再次执行(%s) ...  %s\n%s\n",'='*75,'='*15,self.internal,
-				(datetime.datetime.now()+datetime.timedelta(seconds=self.internal)).strftime("%Y-%m-%d %H:%M:%S"),
-			  '='*15,'='*75)
-			try:
+				logging.info(u"\n%s\n%s %d 秒后再次执行(%s) ...  %s\n%s\n",'='*75,'='*15,self.internal,
+					(datetime.datetime.now()+datetime.timedelta(seconds=self.internal)).strftime("%Y-%m-%d %H:%M:%S"),
+					'='*15,'='*75)
 				time.sleep(self.internal)
-			except KeyboardInterrupt:
-				logging.info(u"用户中断执行.")
-				break
+		except KeyboardInterrupt:
+			logging.info(u"用户中断执行.")
 
 		self.saveCfg()
 		for k,v in self.tasklist.iteritems():
