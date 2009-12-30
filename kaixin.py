@@ -19,10 +19,27 @@
 	#acc=js.Run('acc')
 	#return acc
 
+def htmlentitydecode(s):
+	"""http://snipplr.com/view/15261/python-decode-and-strip-html-entites-to-unicode/"""
+	# First convert alpha entities (such as &eacute;)
+	# (Inspired from http://mail.python.org/pipermail/python-list/2007-June/443813.html)
+	def entity2char(m):
+		entity = m.group(1)
+		if entity in name2codepoint:
+			return chr(name2codepoint[entity])
+		return " "  # Unknown entity: We replace with a space.
+	t = re.sub('&(%s);' % '|'.join(name2codepoint), entity2char, s)
+
+	# Then convert numerical entities (such as &#233;)
+	t = re.sub('&#(\d+);', lambda x: chr(int(x.group(1))), t)
+
+	# Then convert hexa entities (such as &#x00E9;)
+	return re.sub('&#x(\w+);', lambda x: chr(int(x.group(1),16)), t)
 
 class Kaixin(object):
 	def __init__(self,inifile='kaixin.ini'):
 		imp.reload(sys)
+		sys.setdefaultencoding('utf-8')
 		self.curdir=os.path.abspath('.')
 
 		self.inifile=inifile
@@ -55,7 +72,7 @@ class Kaixin(object):
 				format='%(thread)d %(message)s')
 			logging.info("=== log不写入文件.===")
 
-		logging.info("\n\n%s\n%s start %s %s\n%s\n",'='*75,'='*((75-8-len(sys.argv[0]))//2),sys.argv[0],'='*((75-8-len(sys.argv[0]))//2),'='*75)
+		logging.info("\n\n%s\n%s start %s %s\n%s\n 脚本最后更新: %s",'='*75,'='*((75-8-len(sys.argv[0]))//2),sys.argv[0],'='*((75-8-len(sys.argv[0]))//2),'='*75,time.strftime('%Y%m%d %H:%M:%S',time.localtime(os.stat(sys.argv[0]).st_mtime)))
 		logging.info("ini file: %s",self.inifile)
 
 		self.email=self.cfg.get('account','email')
@@ -128,6 +145,9 @@ class Kaixin(object):
 			self.statistics=shelve.open(os.path.join(self.logdir,'kaixin.statistics'))
 		else:
 			self.statistics=shelve.open(os.path.join(self.curdir,'kaixin.statistics'))
+
+		# 检查的地块
+		self.FarmBlock2Check=['1','2','3','9','13','4','5','8','11','14']
 
 		self.verify=''
 
@@ -235,6 +255,7 @@ class Kaixin(object):
 					#logging.info(u"%s(%s) 有防偷!",f['real_name'],f['uid'])
 				fname,fuid=f['real_name'],str(f['uid'])
 				if (fname,fuid) not in self.friends4garden:
+##					if f.get('harvest',None)==1:
 					self.friends4garden.append((fname,fuid))
 				if fuid not in self.friends:
 					self.friends[fuid]=fname
@@ -268,28 +289,31 @@ class Kaixin(object):
 #			logging.debug("total %d farms in this garden",len(items))
 			for i in items:
 				farmnum=i.xpath('farmnum')[0].text
+				if not farmnum in self.FarmBlock2Check:
+					continue
 
+				# -1=枯死 1=生长中 2=成熟 3=采光未犁地
 				try:
-					name=i.xpath('name')[0].text
+					cropsstatus=i.xpath('cropsstatus')[0].text
 				except IndexError:
-					#logging.debug(u"地块 %s 为空",farmnum)
+##					logging.debug("地块 %s 为空",farmnum)
 					continue
 
-				try:
-					crops=i.xpath('crops')[0].text
-				except IndexError:
-					logging.debug("地块 %s 是 %s(枯死的植物)!",farmnum,name)
+				if cropsstatus=='-1':
+##					logging.debug("地块 %s 为枯死的作物",farmnum)
+					continue
+				if cropsstatus=='3':
+##					logging.debug("地块 %s 已经收获光未犁地",farmnum)
 					continue
 
-				farm=i.xpath('farm')[0].text
-				if farm.find('爱心地')!=-1:
-					friendname=farm=i.xpath('friendname')[0].text
-					#logging.debug(u"地块 %s 是 %s 的爱心地!",farmnum,friendname)
-					continue
+##				logging.debug("地块 %s cropsstatus=%s",farmnum,cropsstatus)
 
+				name=i.xpath('name')[0].text
+				crops=i.xpath('crops')[0].text
 				seedid=i.xpath('seedid')[0].text
+
 				if seedid in self.ignoreseeds:
-					#logging.info(u"忽略 %s(%s)",name,seedid)
+##					logging.debug("忽略地块 %s 的 %s(%s)",farmnum,name,seedid)
 					continue
 
 				# 检查seedid是否是未知的
@@ -301,7 +325,7 @@ class Kaixin(object):
 				if m:
 					all=m.group('all')
 					left=int(m.group('left'))
-					if crops.find('已摘过')==-1 and crops.find('已枯死')==-1:
+					if crops.find('已摘过')==-1:
 
 						n=re.search(r'再过(\d+小时)?(\d+分)?(\d+秒)?好友可摘',crops)
 						if n:
@@ -335,21 +359,22 @@ class Kaixin(object):
 							logging.info("(可偷) %d/%s (地块%s--%s(%s)--%s)",left,all,farmnum,name,seedid,crops)
 							self.crops2steal.append((farmnum,seedid,fuid))
 					else:
-						#logging.info(u"地块 %s %s(%s) 已摘过/已枯死 (%s)",farmnum,name,seedid,crops)
+##						logging.debug(u"地块 %s %s(%s) 已摘过(%s)",farmnum,name,seedid,crops)
 						pass
 				else:
 					pass
-					#m=re.search(pgrow,crops)
-					#if m:
-						#precent=m.group(1)
-						#scd=self.getSleepTime(m.groups()[1:])
-						#rawscd=(m.group(2) and [m.group(2)] or [''])[0]\
-							#+(m.group(3) and [m.group(3)] or [''])[0]\
-							#+(m.group(4) and [m.group(4)] or [''])[0]\
-							#+(m.group(5) and [m.group(5)] or [''])[0]
-						#logging.debug(u"地块 %s %s(%s) 处于生长期 %s%% 距离收获 %s 秒(%s)",farmnum,name,seedid,precent,scd,rawscd)
-					#else:
-						#logging.debug(u"地块 %s %s(%s) 处于生长期 (%s)",farmnum,name,seedid,crops)
+##					m=re.search(pgrow,crops)
+##					if m:
+##						precent=m.group(1)
+##						scd=self.getSleepTime(m.groups()[1:])
+##						rawscd=(m.group(2) and [m.group(2)] or [''])[0]\
+##							+(m.group(3) and [m.group(3)] or [''])[0]\
+##							+(m.group(4) and [m.group(4)] or [''])[0]\
+##							+(m.group(5) and [m.group(5)] or [''])[0]
+##						logging.debug("地块 %s %s(%s) 处于生长期 %s%% 距离收获 %s 秒(%s)",farmnum,name,seedid,precent,scd,rawscd)
+##					else:
+####						logging.debug("地块 %s %s(%s) 处于生长期 (%s)",farmnum,name,seedid,crops)
+##						raise Exception("无法判断地块 %s %s(%s) 的收获时间(%s)",farmnum,name,seedid,crops)
 
 			# 查看有没有蜂蜜可偷
 			items=tree.xpath('account/yh_honey')
@@ -360,8 +385,8 @@ class Kaixin(object):
 				count_c=items[0].xpath('count_c')[0].text # 党参蜂蜜
 				total=items[0].xpath('total')[0].text
 				sumtext=items[0].xpath('sum')[0].text
-				#logging.info(u"洋槐蜂蜜 %s, 枸杞蜂蜜 %s, 党参蜂蜜 %s, count/total/sum=%s/%s/%s",
-					#count_a,count_b,count_c,count,total,sumtext)
+##				logging.debug("洋槐蜂蜜 %s, 枸杞蜂蜜 %s, 党参蜂蜜 %s, count/total/sum=%s/%s/%s",
+##					count_a,count_b,count_c,count,total,sumtext)
 
 				items=tree.xpath('account/yh_stealinfo')
 				if items:
@@ -448,7 +473,7 @@ class Kaixin(object):
 
 		anti=tree.xpath('anti')[0].text
 		if anti=='1':
-			logging.error("===> %s anti=1!!! 被反外挂检测到了 \n%s",tasklogstring,etree.tostring(tree,encoding='gbk'))
+			logging.error("===> %s anti=1!!! 被反外挂检测到了 \n%s",tasklogstring,etree.tostring(tree,encoding='gbk').decode('gbk'))
 			return False
 
 		try:
@@ -460,7 +485,7 @@ class Kaixin(object):
 			logging.info("===> %s *** 成功偷取 %s(%s)的 %s %s",tasklogstring,self.friends[fuid],fuid,stealnum,seedname)
 			self.statistics[seedname]=self.statistics.get(seedname,0)+int(stealnum)
 		except IndexError:
-			logging.error("===> %s 解析结果失败!!! \n%s",tasklogstring,etree.tostring(tree,encoding='gbk'))
+			logging.error("===> %s 解析结果失败!!! \n%s",tasklogstring,etree.tostring(tree,encoding='gbk').decode('gbk'))
 
 		return True
 
@@ -481,10 +506,10 @@ class Kaixin(object):
 			for f in data:
 				#logging.debug(u"%s  %s",f['real_name'],f['uid'])
 				fname,fuid=f['real_name'],str(f['uid'])
-				#if f.get('harvest',None):
 				if f.get('antiharvest',None):
 					pass
 					#logging.info(u"%s(%s) 有防偷!",fname,fuid)
+##				if f.get('harvest',None)==1:
 				self.friends4ranch.append((fname,fuid))
 				if fuid not in self.friends:
 					self.friends[fuid]=fname
@@ -502,9 +527,24 @@ class Kaixin(object):
 				{'verify':self.verify,'fuid':fuid})
 			tree = etree.fromstring(r[0])
 
+			# 检查是否有在工作的狗狗
+			try:
+				dogs_name=tree.xpath('dogs_name')[0].text
+				dogs_tips=tree.xpath('dogs_tips')[0].text
+				if dogs_tips.find('距饥饿还有')!=-1:
+					logging.info("跳过！%s 在工作中(%s)!",dogs_name,dogs_tips)
+					continue
+				elif dogs_tips.find('挨饿中')!=-1:
+					logging.debug("%s 在挨饿中(%s).",dogs_name,dogs_tips)
+				else:
+					logging.info("%s 在未知状态(%s)!",dogs_name,dogs_tips)
+			except IndexError:
+				pass
+##				logging.info("没有发现在工作的狗狗!")
+
 			ret=tree.xpath('ret')[0].text
 			if ret!='succ':
-				logging.error("===>获取牧场信息失败!!! ret=%s (%s)",ret,etree.tostring(tree,encoding='gbk'))
+				logging.error("===>获取牧场信息失败!!! ret=%s (%s)",ret,etree.tostring(tree,encoding='gbk').decode('gbk'))
 				continue
 
 			items=tree.xpath('product2/item')
@@ -559,7 +599,7 @@ class Kaixin(object):
 
 							continue
 				except Exception as e:
-					logging.error("解析product2失败! (%s)(%s)",e,etree.tostring(i,encoding='gbk'))
+					logging.error("解析product2失败! (%s)(%s)",e,etree.tostring(i,encoding='gbk').decode('gbk'))
 
 				logging.debug("(可偷) %d/%d (%s--%d--%d--%s)",num-stealnum,num,pname,num,stealnum,tips)
 				reslt=self.stealRanchProduct(fuidtext,skey,typetext)
@@ -578,13 +618,12 @@ class Kaixin(object):
 							self.animallist[skey]=[0,aname]
 							logging.info("添加未知牧场品种 %s(%s)",skey,aname)
 						except Exception:
-							logging.info("未知牧场品种 %s(%s)",skey,etree.tostring(i,encoding='gbk'))
+							logging.info("未知牧场品种 %s(%s)",skey,etree.tostring(i,encoding='gbk').decode('gbk'))
 							continue # 因为不知道名字，所以不处理
 
 					tips=i.xpath('tips')[0].text
 					m=re.search(pproduct,tips)
 					if m:
-						#logging.debug(u"item: %s",etree.tostring(i,encoding='gbk'))
 						scd=self.getSleepTime(m.groups()[1:])
 						rawscd=(m.group(2)!=None and [m.group(2)] or [''])[0]+\
 						  (m.group(3)!=None and [m.group(3)] or [''])[0]
@@ -615,7 +654,7 @@ class Kaixin(object):
 							self.tasklist[k]=t
 
 				except Exception as e:
-					logging.exception("解析animals失败! (%s)",etree.tostring(i,encoding='gbk'))
+					logging.exception("解析animals失败! (%s)",etree.tostring(i,encoding='gbk').decode('gbk'))
 
 	def stealRanchProduct(self,fuid,skey,typetext,taskkey=''):
 		"""steal one item 偷取一个牧场产品"""
@@ -650,7 +689,7 @@ class Kaixin(object):
 			logging.info("===> %s *** 成功偷取 %s %s~",tasklogstring,res_num,self.animallist[res_skey][1])
 			self.statistics[self.animallist[res_skey][1]]=self.statistics.get(self.animallist[res_skey][1],0)+int(res_num)
 		except IndexError:
-			logging.error("===> %s 解析结果失败!!! \n%s",tasklogstring,etree.tostring(tree,encoding='gbk'))
+			logging.error("===> %s 解析结果失败!!! \n%s",tasklogstring,etree.tostring(tree,encoding='gbk').decode('gbk'))
 			return False
 
 		return True
@@ -794,7 +833,7 @@ class Kaixin(object):
 
 			ret=tree.xpath('ret')[0].text
 			if ret!='succ':
-				logging.debug("===> 获取仓库植物产品信息失败! (%s)\n%s",ret,etree.tostring(tree,encoding='gbk'))
+				logging.debug("===> 获取仓库植物产品信息失败! (%s)\n%s",ret,etree.tostring(tree,encoding='gbk').decode('gbk'))
 				return False
 
 			totalprice=tree.xpath('totalprice')[0].text
@@ -809,7 +848,7 @@ class Kaixin(object):
 					logging.debug("seedid=%s,name=%s,num=%s",seedid,name,num)
 					self.getGardenFruitInfo(seedid)
 				except IndexError:
-					logging.error("===>解析植物产品信息失败!!! \n%s",etree.tostring(i,encoding='gbk'))
+					logging.error("===>解析植物产品信息失败!!! \n%s",etree.tostring(i,encoding='gbk').decode('gbk'))
 
 
 
@@ -820,7 +859,7 @@ class Kaixin(object):
 
 			ret=tree.xpath('ret')[0].text
 			if ret!='succ':
-				logging.debug("===> 获取仓库动物产品信息失败! (%s)\n%s",ret,etree.tostring(tree,encoding='gbk'))
+				logging.debug("===> 获取仓库动物产品信息失败! (%s)\n%s",ret,etree.tostring(tree,encoding='gbk').decode('gbk'))
 				return False
 
 			totalprice=tree.xpath('totalprice')[0].text
@@ -836,7 +875,7 @@ class Kaixin(object):
 					logging.debug("aid=%s,name=%s,num=%s,type=%s",aid,name,num,typetext)
 					self.getRanchFruitInfo(typetext,aid)
 				except IndexError:
-					logging.error("===>解析仓库动物产品信息失败!!! \n%s",etree.tostring(i,encoding='gbk'))
+					logging.error("===>解析仓库动物产品信息失败!!! \n%s",etree.tostring(i,encoding='gbk').decode('gbk'))
 
 		return True
 
@@ -860,7 +899,7 @@ class Kaixin(object):
 
 			ret=tree.xpath('ret')[0].text
 			if ret!='succ':
-				logging.debug("===> 获取作物 %s 具体信息失败! (%s)\n%s",seedid,ret,etree.tostring(tree,encoding='gbk'))
+				logging.debug("===> 获取作物 %s 具体信息失败! (%s)\n%s",seedid,ret,etree.tostring(tree,encoding='gbk').decode('gbk'))
 				return False
 
 			try:
@@ -894,7 +933,7 @@ class Kaixin(object):
 				except Exception as e:
 					logging.error("===>更新作物信息失败!!! \n%s",e)
 			except IndexError:
-				logging.error("===>解析仓库信息失败!!! \n%s",etree.tostring(tree,encoding='gbk'))
+				logging.error("===>解析仓库信息失败!!! \n%s",etree.tostring(tree,encoding='gbk').decode('gbk'))
 
 		return True
 
@@ -965,7 +1004,7 @@ class Kaixin(object):
 
 		ret=tree.xpath('ret')[0].text
 		if ret!='succ':
-			logging.error("===>%s 获取牧场信息失败!!! ret=%s (%s)",task_key,ret,etree.tostring(tree,encoding='gbk'))
+			logging.error("===>%s 获取牧场信息失败!!! ret=%s (%s)",task_key,ret,etree.tostring(tree,encoding='gbk').decode('gbk'))
 			return
 
 		p=re.compile(r'剩余数量：(?P<left>\d+)')
@@ -1000,10 +1039,10 @@ class Kaixin(object):
 							logging.info("%s 等待 %.2f 秒 ...",task_key,scd)
 							time.sleep(scd)
 						else:
-							logging.info("%s scd=%d !!! (%s)",task_key,scd,etree.tostring(i,encoding='gbk'))
+							logging.info("%s scd=%d !!! (%s)",task_key,scd,etree.tostring(i,encoding='gbk').decode('gbk'))
 							return
 			except Exception as e:
-				logging.error("%s 解析product2失败! (%s)",task_key,etree.tostring(i,encoding='gbk'))
+				logging.error("%s 解析product2失败! (%s)",task_key,etree.tostring(i,encoding='gbk').decode('gbk'))
 				return
 
 			#logging.debug(u"(可偷) %d/%d (%s--%d--%d--%s--%s)",num-stealnum,num,pname,num,stealnum,oa,tips)
@@ -1051,11 +1090,11 @@ class Kaixin(object):
 						logging.info("%s 等待 %.2f 秒 ...",task_key,scd)
 						time.sleep(scd)
 					else:
-						logging.info("%s scd=%d !!! (%s)",task_key,scd,etree.tostring(i,encoding='gbk'))
+						logging.info("%s scd=%d !!! (%s)",task_key,scd,etree.tostring(i,encoding='gbk').decode('gbk'))
 						return
 
 			except Exception as e:
-				logging.exception("%s 解析animals失败! (%s)",task_key,etree.tostring(i,encoding='gbk'))
+				logging.exception("%s 解析animals失败! (%s)",task_key,etree.tostring(i,encoding='gbk').decode('gbk'))
 				return
 
 			scd=0.1
@@ -1064,23 +1103,26 @@ class Kaixin(object):
 				scd=0.05
 				trycnt=10
 			for i in range(trycnt):
+				if i==trycnt-1:
+					tmpr = self.getResponse('http://www.kaixin001.com/!house/!ranch//getconf.php',
+				      {'verify':self.verify,'fuid':i_fuid})
+					tmptree = etree.fromstring(tmpr[0])
+					tmpret=tmptree.xpath('ret')[0].text
+					if tmpret!='succ':
+						logging.error("===>%s (debug)重新获取牧场信息失败!!! ret=%s (%s)",task_key,tmpret,etree.tostring(tmptree,encoding='gbk').decode('gbk'))
+					else:
+						logging.info("重新获取牧场信息成功.")
+
 				reslt=self.stealRanchProduct(i_fuid,skey,i_typetext,task_key)
 				if reslt==False:
 					scd*=2
 					if i!=trycnt-1:
 						if i==trycnt-2:
-							scd=50 # 60 50 succ
+							scd=60 # 60 50 succ
 						logging.info("第 %d 次偷取失败, %.2f 秒后再次尝试偷取(%s,%s,%s)...",i+1,scd,i_fuid,skey,i_typetext)
 					else:
 						logging.info("第 %d 次偷取失败, 停止尝试.",i+1)
 						break
-					if i==trycnt-2:
-						tmpr = self.getResponse('http://www.kaixin001.com/house/ranch/getconf.php',
-								{'verify':self.verify,'fuid':i_fuid})
-						tmptree = etree.fromstring(tmpr[0])
-						tmpret=tmptree.xpath('ret')[0].text
-						if tmpret!='succ':
-							logging.error("===>%s (debug)重新获取牧场信息失败!!! ret=%s (%s)",task_key,tmpret,etree.tostring(tmptree,encoding='gbk'))
 					time.sleep(scd)
 				else:
 					break
@@ -1111,24 +1153,24 @@ class Kaixin(object):
 			if farmnum!=i_farmnum:
 				continue
 
+			# -1=枯死 1=生长中 2=成熟 3=采光未犁地
 			try:
-				name=i.xpath('name')[0].text
+				cropsstatus=i.xpath('cropsstatus')[0].text
 			except IndexError:
-				logging.debug("%s 地块 %s is empty",task_key,farmnum)
-				return
+##				logging.debug("地块 %s 为空",farmnum)
+				continue
 
-			try:
-				crops=i.xpath('crops')[0].text
-			except IndexError:
-				logging.debug("%s 地块 %s is %s(摇钱树 or 枯死的植物)!",task_key,farmnum,name)
-				return
+##			if cropsstatus=='-1':
+##				logging.debug("地块 %s 为枯死的作物",farmnum)
+##				continue
+			if cropsstatus=='3':
+##				logging.debug("地块 %s 已经收获光未犁地",farmnum)
+				continue
 
-			farm=i.xpath('farm')[0].text
-			if farm.find('爱心地')!=-1:
-				friendname=farm=i.xpath('friendname')[0].text
-				logging.debug("%s 地块 %s is %s 的爱心地!",task_key,farmnum,friendname)
-				return
+			logging.info("地块 %s cropsstatus=%s",farmnum,cropsstatus)
 
+			name=i.xpath('name')[0].text
+			crops=i.xpath('crops')[0].text
 			seedid=i.xpath('seedid')[0].text
 			if seedid!=i_seedid:
 				logging.exception("%s 与预期的seedid不符! (%s!=%s)",task_key,seedid,i_seedid)
@@ -1168,19 +1210,21 @@ class Kaixin(object):
 
 		if self.signed_in:
 			if not self.verify:
-				r = self.getResponse('http://www.kaixin001.com/app/app.php?aid=1062&url=garden/index.php')
-				m = re.search('var g_verify = "(.+)";', r[0])
+				r = self.getResponse('http://www.kaixin001.com/app/app.php?aid=1062&url=ranch/index.php')
+				m = re.search('var g_verify = "(.+)";', r[0].decode('utf8'))
 				self.verify = m.group(1)
 				logging.info("verify=%s",self.verify)
 
 			logging.debug("获取动物产品 %s 具体信息 ... ",i_id)
 			r = self.getResponse('http://www.kaixin001.com/!house/!ranch/myfruitinfo.php',
 				{'verify':self.verify,'type':i_type,'id':i_id})
+			logging.debug("%s %s myfruitinfo:%s",i_type,i_id,r[0].decode('utf8'))
+			time.sleep(1)
 			tree = etree.fromstring(r[0])
 
 			ret=tree.xpath('ret')[0].text
 			if ret!='succ':
-				logging.debug("===> 获取动物产品 %s 具体信息失败! (%s)\n%s",i_id,ret,etree.tostring(tree,encoding='gbk'))
+				logging.debug("===> 获取动物产品 %s 具体信息失败! (%s)\n%s",i_id,ret,etree.tostring(tree,encoding='gbk').decode('gbk'))
 				return False
 
 			try:
@@ -1218,7 +1262,7 @@ class Kaixin(object):
 				except Exception as e:
 					logging.error("===>更新动物产品信息失败!!! \n%s",e)
 			except IndexError:
-				logging.error("===>解析仓库动物产品信息失败!!! \n%s",etree.tostring(tree,encoding='gbk'))
+				logging.error("===>解析仓库动物产品信息失败!!! \n%s",etree.tostring(tree,encoding='gbk').decode('gbk'))
 
 		return True
 
@@ -1238,9 +1282,9 @@ class Kaixin(object):
 
 		try:
 			count=tree.xpath('count')[0].text
-			logging.info("===> *** 成功偷取 %s(%s)的 %s 蜂蜜~ (%s)",self.friends[fuid],fuid,count,etree.tostring(tree,encoding='gbk'))
+			logging.info("===> *** 成功偷取 %s(%s)的 %s 蜂蜜~ (%s)",self.friends[fuid],fuid,count,etree.tostring(tree,encoding='gbk').decode('gbk'))
 		except IndexError:
-			logging.error("===> 解析结果失败!!! \n%s",etree.tostring(tree,encoding='gbk'))
+			logging.error("===> 解析结果失败!!! \n%s",etree.tostring(tree,encoding='gbk').decode('gbk'))
 
 		return True
 
@@ -1287,6 +1331,7 @@ if __name__=='__main__':
 	import sys
 	import shelve
 	import imp
+	from html.entities import name2codepoint
 
 	#i=Kaixin(ur'd:\kaixin.ini')
 	#i.run()
