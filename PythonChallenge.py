@@ -314,7 +314,6 @@ def level_12():
 # 下面代码是copy自 http://lampeter123.javaeye.com/blog/401030
 # 对rpc调用不熟悉，不靠攻略我是做不出来了
 def level_13():
-	import xmlrpclib
 	conn=xmlrpclib.ServerProxy("http://www.pythonchallenge.com/pc/phonebook.php")
 	result=conn.phone('Bert')
 	print result # 输出 555-ITALY ==> http://www.pythonchallenge.com/pc/return/italy.html
@@ -412,17 +411,292 @@ def level_15():
 # let me get this straight
 # 一幅噪声图像
 def level_16():
-	pass
+##	# 尝试把不是粉短线的颜色都去掉
+##	f=GifImagePlugin.GifImageFile(ur'd:\mozart.gif')
+##	mf=PIL.Image.new('P',f.size)
+##	for y in range(f.size[1]):
+##		for x in range(f.size[0]):
+##			if f.getpixel((x,y))==195:
+##				mf.putpixel((x,y),195)
+##	mf.save(ur'd:\16.gif','gif') # 啥都看不出来 查看攻略 原来所谓get this straight是说把这些粉短线都按行对齐
+
+	f=GifImagePlugin.GifImageFile(ur'd:\mozart.gif')
+	mf=PIL.Image.new('P',f.size)
+	mf.putpalette(f.getpalette()) # 用原图的调色板
+	for y in range(f.size[1]):
+		for x in range(f.size[0]):
+			if f.getpixel((x,y))==195: # 找到头一个粉色像素 以此为对准线
+				for mx in range(f.size[0]):
+					mf.putpixel((mx,y),f.getpixel(((mx+x)%f.size[0],y))) # 将从这个粉色像素开始的一行复制到新图片中
+				break
+	mf.save(ur'd:\16.gif','gif') # 图像中包含romance ==> http://www.pythonchallenge.com/pc/return/romance.html
+
+
+	# 我上面的方法得几秒钟才能完成，主要是getpixel putpixel频繁调用效率很低
+	# 而老外的方法相当快，主要是避免了多重循环中的单像素操作
+
+	# 这是老外用正则的解法，很强大！速度相当快！
+	# 思路是将数据转换为640为一行的数组，
+	# 用正则匹配每行中的[第一个粉块前][第一个粉块][第一个粉块后]三部分，将其调
+	# 整为[第一个粉块][第一个粉块后][第一个粉块前]
+	# 最后再转换回去
+	import Image, re
+	img = Image.open(ur"d:\mozart.gif")
+	imgtext = img.tostring().replace('\n','0') # 转换数据为string并将本来可能存在的'\n'先替换掉
+	imgtext = '\n'.join([imgtext[i*640:(i+1)*640] for i in range(480)]) # 按640为一行成为480行
+	imgtext = re.compile('^(.*?)(\xc3{5})(.*?)$',re.M).sub(r'\2\3\1', imgtext).replace('\n',"") # 将第一个5像素粉块移到开头
+	img.fromstring(imgtext) # 保存回处理后的数据
+	img.save(ur"d:\mozartnew.gif")
+
+	# 另一个不错的方法
+	# 按行处理，每行用PIL的专门方法重新设定偏移
+	import Image,ImageChops
+	im = Image.open(ur"d:\mozart.gif")
+	magic = chr(195)
+	for y in range(im.size[1]):
+		box = 0, y, im.size[0], y+1 # box bounding row y 设定边界，就是选定一行
+		row = im.crop(box) # 按边界剪切下一行
+		bytes = row.tostring() # 将此行数据转换为string
+		# Rotate 195 to the first column.
+		i = bytes.index(magic) # 确定第一个粉色点
+		row = ImageChops.offset(row, -i) # 根据第一个粉色点设定偏移，完成对齐
+		im.paste(row, box)  # overwrite the original row 覆盖原来的行
+	im.save(ur"d:\out.gif")  # or just "im.show()" 保存为另一个文件
+
+
+# http://www.pythonchallenge.com/pc/return/romance.html
+# 第17关
+# eat?
+# 图片名字是 http://www.pythonchallenge.com/pc/return/cookies.jpg
+# 难道跟cookie有关?
+# 用firebug 查看页面的cookie，有提示 info=you+should+have+followed+busynothing...
+# 回到第4关的链接，nothing改为busynothing ==> http://www.pythonchallenge.com/pc/def/linkedlist.php?busynothing=12345
+# 得到提示
+# If you came here from level 4 - go back!
+# You should follow the obvious chain...
+#
+# and the next busynothing is 92512
+# cookie中 info=B，看来又得顺着链接提取每个页面里面的cookies的info值 拼起来
 def level_17():
-	pass
+	busynothing='12345'
+	url='http://www.pythonchallenge.com/pc/def/linkedlist.php?busynothing=%s'
+	p=re.compile(r'and the next busynothing is (\d+)',re.M)
+	info=''
+	while True:
+		res=urllib.urlopen(url%(busynothing,))
+		s=res.info().getheaders('set-cookie')[0].split(';',1)[0].split('=')[1]
+		print s
+		info+=s
+		data=res.read()
+		m=p.search(data)
+		if m:
+			busynothing=m.group(1)
+			print 'busynothing=',busynothing
+		else:
+			print data
+			print info # 输出 BZh91AY%26SY%94%3A%E2I%00%00%21%19%80P%81%11%00%AFg%9E%A0+%00hE%3DM%B5%23%D0%D4%D1%E2%8D%06%A9%FA%26S%D4%D3%21%A1%EAi7h%9B%9A%2B%BF%60%22%C5WX%E1%ADL%80%E8V%3C%C6%A8%DBH%2632%18%A8x%01%08%21%8DS%0B%C8%AF%96KO%CA2%B0%F1%BD%1Du%A0%86%05%92s%B0%92%C4Bc%F1w%24S%85%09%09C%AE%24%90
+			break
+
+	# BZ打头的看来又需要bz2了
+	info=urllib.unquote_plus(info) # 本来用unquote()，结果下面的解压就会失败。原来unquote_plus()是先将'+'替换为' '然后再调用unquote()，都是'+'惹的祸
+	print bz2.decompress(info) # 输出 is it the 26th already? call his father and inform him that "the flowers are on their way". he'll understand.
+
+	# google 得知mozart的老爸叫 Leopold
+	# 回 13关的电话薄
+	conn=xmlrpclib.ServerProxy("http://www.pythonchallenge.com/pc/phonebook.php")
+	result=conn.phone('Leopold') # 查Mozart老爸的电话
+	print result # 输出 555-VIOLIN ==> http://www.pythonchallenge.com/pc/return/violin.html
+	# 提示 no! i mean yes! but ../stuff/violin.php. ==> http://www.pythonchallenge.com/pc/stuff/violin.php
+	# 显示 it's me. what do you want? 图片是 Leopold的头像？
+	# 把 the flowers are on their way 这句话放到cookies的info里面发过去试试
+	h={}
+	h['cookie']='info='+urllib.quote_plus('the flowers are on their way')
+	conn=httplib.HTTPConnection('www.pythonchallenge.com')
+	conn.set_debuglevel(1)
+	conn.request('GET','http://www.pythonchallenge.com/pc/stuff/violin.php',headers=h)
+	res=conn.getresponse()
+	print res.read() #	输出网页中提示 oh well, don't you dare to forget the balloons.  ==>  http://www.pythonchallenge.com/pc/return/balloons.html
+
+	# 看老外的解法，里面对cookie的操作很有启发
+	# http://wiki.pythonchallenge.com/index.php?title=Level17:Main_Page
+##	import cookielib
+##	cj = cookielib.CookieJar()
+##	opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cj))
+##	......
+##	request = urllib2.Request('http://www.pythonchallenge.com/pc/def/linkedlist.php?busynothing=12345')
+##	response = opener.open(request)
+	# 这一步将本次请求和响应对的所有的cookies都放到了变量cookies中
+##	cookies = cj.make_cookies(response, request) # extract all cookies that this request-response pair added to the jar
+##	......
+##	cookie = cookies[0] # from the previous code clock 取第一个名为info的cookie
+##	cookie.value = 'the flowers are on their way' # 将其值设为要发送的，不必自己转码
+##	request = urllib2.Request('http://www.pythonchallenge.com/pc/stuff/violin.php')
+	# 使用修改后的cookie
+##	cj.set_cookie(cookie) # overwrite the current info='whatever' cookie in the jar with the "flowers" cookie
+##	cj.add_cookie_header(request) # add the Cookie: header to request 将cookies放入请求头部
+##	print urllib2.urlopen(request).read()
+
+
+# http://www.pythonchallenge.com/pc/return/balloons.html
+# 第18关
+# can you tell the difference?
+# 网页注释提示 <!-- it is more obvious that what you might think -->
+# 很显然是亮度 brightness  ==>  http://www.pythonchallenge.com/pc/return/brightness.html
+# 还是这幅画
+# 网页注释提示 <!-- maybe consider deltas.gz --> ==> http://www.pythonchallenge.com/pc/return/deltas.gz
+# 里面是个文件delta.txt，类似hex视图比较，左右两部分都以 89 50 4e 47 开头 42 60 82 结尾
+# 大概是两个文件，图像文件？
+# 完全没思路，抄老外的一个解法，主要是使用difflib.ndiff()比较两边的相似性，那是相当简介，佩服！
 def level_18():
-	pass
-def level_18():
-	pass
+	data=gzip.GzipFile(ur'd:\deltas.gz').read() # 打开gz文件读取数据
+	data=data.splitlines() # 转换为字符串列表
+	left,right,png=[],[],['','','']
+	for line in data:
+		left.append(line[:53]) # 保存左半部份
+		right.append(line[56:]) # 保存右半部分
+	diff=list(difflib.ndiff(left,right)) # 关键是这句 调用ndiff比较两个字符串列表，返回的每行开头为'- '或'+ '或'  '指示本行是对左边唯一还是对右边唯一还是两边都包含
+
+	for line in diff:
+		bytes=[chr(int(byte,16)) for byte in line[2:].split()] # 转换编码
+		if line[0]=='-': png[0]+=''.join(bytes) # '- ' line unique to sequence 1
+		elif line[0]=='+': png[1]+=''.join(bytes) # '+ ' line unique to sequence 2
+		elif line[0]==' ': png[2]+=''.join(bytes) # '  ' line common to both sequences
+
+	for i in range(3):
+		open(ur'd:\18_%d.png'%i,'wb').write(png[i]) # 18_0.png: 显示fly    18_1.png: 显示butter    18_2.png: 显示../hex/bin.html
+		# ==> http://www.pythonchallenge.com/pc/hex/bin.html 用户名 butter 密码 fly (提示框指示 "pluses and minuses" 即 + -)
+
+
+
+# http://www.pythonchallenge.com/pc/hex/bin.html
+# 第19关
+# please!
+# 印度的地图？
+# 网页注释中有封编码了的邮件，要你解码
+# 边界指示 --===============1295515792==
+# 是个音频文件 indian.wav 貌似base64编码过
 def level_19():
-	pass
+##	data=urllib.urlopen('http://butter:fly@www.pythonchallenge.com/pc/hex/bin.html').read()
+####	m=re.search(r'--===============1295515792==\n(.*?)--===============1295515792==',data,re.M|re.S)
+##	m=re.search(r'Content-transfer-encoding: base64\n\n(.*?)\n\n--===============1295515792==',data,re.M|re.S)
+##	if m:
+##		s=base64.b64decode(m.group(1))
+##		open(ur'd:\indian.wav','w').write(s) # 这个文件啥都听不出来 只好翻攻略
+
+	# 下面是攻略的解法
+##	data=urllib.urlopen('http://butter:fly@www.pythonchallenge.com/pc/hex/bin.html').read()
+##	m=re.search(r'<!--\n(.*?)-->',data,re.M|re.S)
+##	mail=email.message_from_string(m.group(1)) # email模块以前从未用到
+##	for part in mail.walk():
+##		if part.get_content_maintype()=='audio':
+##			audio=part.get_payload(decode=1)
+##			open(ur'd:\19_indian.wav','w').write(audio) # 此处解出的文件和我的一样，攻略中说能听出sorry，可我还是啥都听不出来。。。
+##			# 攻略说能看出来印度地图反了，想到 'inverted India'==>'inverted endian'
+##			# 也就是反转字节
+
+	wi=wave.open(ur'd:\19_indian.wav','rb') # wave模块以前从未用到
+	wo=wave.open(ur'd:\19_indian_inv.wav','wb')
+	wo.setparams(wi.getparams()) # 输出文件设置成与输入文件相同的参数
+	a=array.array('i') # array模块以前从未用到，'i'代表数组中的数据类型是有符号整型
+	a.fromstring(wi.readframes(wi.getnframes())) # 将所有帧放入数组
+	a.byteswap() # 关键是这步，两两交换字节
+	wo.writeframes(a.tostring())
+	wi.close(),wo.close() # 据说新文件能听到 you are an idiot ==> http://www.pythonchallenge.com/pc/hex/idiot.html
+	# "Now you should apologize..."
+	# ==> http://www.pythonchallenge.com/pc/hex/idiot2.html
+	# 总之这关似乎有问题，音频文件听起来乱糟糟的，实在听不出来任何有意义的发音
+
+
+# http://www.pythonchallenge.com/pc/hex/idiot2.html
+# 第20关
+# go away!
+# but inspecting it carefully is allowed.
+# 图片是有警告牌的铁栅栏 用firebug查看 http://www.pythonchallenge.com/pc/hex/unreal.jpg
+# 的http头部可见 Content-Range	bytes 0-30202/2123456789 字样
+# 让人联想断点续传中的分块下载，可见得到的图片并不完整
+# 设想模拟http协议每次多取一部分
+# 用HTTP协议的协议头 Range 指定不同范围提交请求以猜测数据
+# 结果在以下范围得到有意义的返回：
+# 30203-30236/2123456789   Why don't you respect my privacy?
+# 30237-30283/2123456789  we can go on in this way for really long time.
+# 30284-30294/2123456789  stop this!
+# 30295-30312/2123456789  invader! invader!
+# 30313-30346/2123456789  ok, invader. you are inside now.
+# 后面以100为步长，半天没结果，
+# 尝试从最后倒着来，找到：
+# 2123456744-2123456788/2123456789 esrever ni emankcin wen ruoy si drowssap eht
+# 尝试打开 http://www.pythonchallenge.com/pc/hex/invader.html
+# 得到 Yes! that's you!
+# 看来不对。。。。
+#
+# 再往前10000字节找
+# beginidx=2123456743-10000
+# endidx=2123456743
+# step=100
+# 在扫描2123456743-2123456743时得到  2123456712-2123456743/2123456789 and it is hiding at 1152983631.
+#
+# 根据上面的提示直接获取
+# 1152983631-1153223363/2123456789 得到一个文件,内容PK打头，可能是pkzip？后缀改为zip打开，里面是加密的，用invader反转过来的redavni
+# 打开readme.txt内容：
+# Yes! This is really level 21 in here.
+# And yes, After you solve it, you'll be in level 22!
+#
+# Now for the level:
+#
+# * We used to play this game when we were kids
+# * When I had no idea what to do, I looked backwards.
+#
+# 这么说已经过了20关，包里的文件package.pack就是第21关的题了。
 def level_20():
-	pass
+	class myHTTPDefaultErrorHandler(urllib2.HTTPDefaultErrorHandler):
+		def http_error_default(self, req, fp, code, msg, hdrs):
+			if code=='416':
+				print 'haha'
+				return fp
+	url='http://www.pythonchallenge.com/pc/hex/unreal.jpg'
+	usr,pwd='butter','fly'
+##	passman=urllib2.HTTPPasswordMgrWithDefaultRealm()
+	passman=urllib2.HTTPPasswordMgr() # 密码管理
+	passman.add_password('pluses and minuses',url,usr,pwd)
+	authhandler=urllib2.HTTPBasicAuthHandler(passman) # 基本验证handler
+	cj=cookielib.CookieJar()
+	opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cj),authhandler,myHTTPDefaultErrorHandler)
+
+	opener.addheaders = [('User-Agent', 'Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1; SV1) chromeframe/4.0')]
+	urllib2.install_opener(opener)
+	opener.handle_open['http'][0].set_http_debuglevel(1) # 设置debug以打印出发送和返回的头部信息
+	h={}
+	beginidx=1152983631#2123456743-10000#30203
+	endidx=2123456743#beginidx+1000000#30347#beginidx+100
+	p=re.compile('bytes \d+-(\d+)/2123456789')
+	while True:
+		h['Range']='bytes=%d-%d'%(beginidx,endidx)
+		req=urllib2.Request(url,None,headers=h)
+		# 此法可以简单模拟基本验证，不过不推荐，还是用HTTPPasswordMgr和HTTPBasicAuthHandler正规
+##	base64string = base64.encodestring('%s:%s' % ('butter','fly'))[:-1]
+##	req.add_header("Authorization", "Basic %s" % base64string)
+		r = opener.open(req,timeout=5)
+		if r:
+			res=r.read()
+			s=r.info().getheaders('Content-Range')[0]
+			m=p.search(s)
+			if m: # 代表得到有效的内容，保存
+				open(r'd:\unreal.jpg','wb').write(res)
+				beginidx=int(m.group(1))+1
+				endidx+=10000
+				raw_input('next:%d-%d>'%(beginidx,endidx)) # 得到有效内容后暂停一下
+				continue
+##		endidx+=1000000
+		beginidx+=    100
+		if beginidx>2123456744:
+			print 'done.'
+			break
+
+
+
+# 没有url
+# 第21关
+# 上一关得到的 package.pack
 def level_21():
 	pass
 def level_22():
@@ -457,7 +731,17 @@ if __name__=="__main__":
 	import zipfile
 	from PIL import PngImagePlugin
 	from PIL import JpegImagePlugin
+	from PIL import GifImagePlugin
 	import PIL
 	import bz2
 	import calendar
-	level_16()
+	import urllib
+	import httplib
+	import xmlrpclib
+	import gzip
+	import difflib
+	import base64
+	import email
+	import wave
+	import array
+	level_20()

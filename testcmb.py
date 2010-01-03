@@ -149,27 +149,38 @@ class CMB(object):
 		logging.info(u"(4)立即付款 控件版...")
 
 		tbIdentNoCtl= win32com.client.Dispatch("{0CA54D3F-CEAE-48AF-9A2B-31909CB9515D}") # 身份证
+		tbIdentNoCtl.PasswdCtrl=False
+		tbIdentNoCtl.MaxLength=18
 		tbIdentNoCtl.Text='11010819790124631X'
 		self.data['ident']='01'+tbIdentNoCtl.Value
 
 		tbCardNoCtl= win32com.client.Dispatch("{0CA54D3F-CEAE-48AF-9A2B-31909CB9515D}")
 ##		tbCardNoCtl.IValue=c
+		tbCardNoCtl.PasswdCtrl=False
+		tbCardNoCtl.MaxLength=16
 		tbCardNoCtl.Text='6225760000167861'
-		self.data['cardno']=tbCardNoCtl.Value.encode('utf8')
+		self.data['cardno']=tbCardNoCtl.Value
 
 		tbPasswordCtl= win32com.client.Dispatch("{0CA54D3F-CEAE-48AF-9A2B-31909CB9515D}")
+		tbPasswordCtl.MaxLength=6
 		tbPasswordCtl.Text='584692'
 		self.data['password']=tbPasswordCtl.Value
 
 		tbValDateMonthCtl= win32com.client.Dispatch("{0CA54D3F-CEAE-48AF-9A2B-31909CB9515D}")
+		tbValDateMonthCtl.PasswdCtrl=False
+		tbValDateMonthCtl.MaxLength=2
 		tbValDateMonthCtl.Text='02'
 		self.data['expiredMonth']=tbValDateMonthCtl.Value
 
 		tbValDateYearCtl= win32com.client.Dispatch("{0CA54D3F-CEAE-48AF-9A2B-31909CB9515D}")
+		tbValDateYearCtl.PasswdCtrl=False
+		tbValDateYearCtl.MaxLength=2
 		tbValDateYearCtl.Text='12'
 		self.data['expiredYear']=tbValDateYearCtl.Value
 
 		tbCVVCtl= win32com.client.Dispatch("{0CA54D3F-CEAE-48AF-9A2B-31909CB9515D}")
+		tbCVVCtl.PasswdCtrl=False
+		tbCVVCtl.MaxLength=3
 		tbCVVCtl.Text='836'
 		self.data['cvv']=tbCVVCtl.Value
 
