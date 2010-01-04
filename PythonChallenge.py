@@ -15,7 +15,6 @@ def level_00():
 def level_01():
 	s="""g fmnc wms bgblr rpylqjyrc gr zw fylb. rfyrq ufyr amknsrcpq ypc dmp. bmgle gr gl zw fylb gq glcddgagclr ylb rfyr'q ufw rfgq rcvr gq qm jmle. sqgle qrpgle.kyicrpylq() gq pcamkkclbcb. lmu ynnjw ml rfc spj. """
 	s='map' # ==> ocr ==> http://www.pythonchallenge.com/pc/def/ocr.html
-	import string
 	for i in s:
 		if i.isalpha():
 			print chr(((ord(i)+2)<=ord('z') and [ord(i)+2] or [ord(i)-24])[0]),
@@ -636,7 +635,7 @@ def level_19():
 # 在扫描2123456743-2123456743时得到  2123456712-2123456743/2123456789 and it is hiding at 1152983631.
 #
 # 根据上面的提示直接获取
-# 1152983631-1153223363/2123456789 得到一个文件,内容PK打头，可能是pkzip？后缀改为zip打开，里面是加密的，用invader反转过来的redavni
+# 1152983631-1153223363/2123456789 得到一个文件,内容PK打头，可能是pkzip？后缀改为zip打开，里面是加密的，用invader反转过来的 redavni
 # 打开readme.txt内容：
 # Yes! This is really level 21 in here.
 # And yes, After you solve it, you'll be in level 22!
@@ -697,12 +696,170 @@ def level_20():
 # 没有url
 # 第21关
 # 上一关得到的 package.pack
+# 后面完全没思路了，照抄老外的解法
 def level_21():
-	pass
+##	f=zipfile.ZipFile(r'd:\unreal.zip')
+##	data=f.open(r'package.pack','r',pwd='redavni').read()
+##	open(r'd:\package.pack','wb').write(data)
+
+	# 老外的解法 出处 http://unixwars.com/2007/09/27/python-challenge-level-21-hidden-pack/
+	# 思路是先用zlib解，成功则记为' '，失败的话则用bz2解，成功则记为'#'，失败的话则反转数据并复位状态，
+	# 如此继续循环，直到上次状态复位后的zlib和bz2尝试都失败则退出
+	# 说不清楚还是看程序吧，很诡异。
+	st=open(r'd:\package.pack','rb').read()
+	log=''
+	log_len=len(log)
+	while True:
+		try: #zlib
+			st=zlib.decompress(st)
+			log+=' '
+		except:
+			try: #bzip2
+				st=bz2.decompress(st)
+				log+='#'
+			except: #reverse
+				if log_len==len(log): break # 自上次状态复位后的zlib和bz2尝试都失败，则退出
+				st=st[::-1] # 反转数据
+				print log[log_len:] # 打印上次状态复位后积累的状态字符。 最终输出拼为一个图形字符 显示COPPER ==>  http://www.pythonchallenge.com/pc/hex/copper.html
+				log_len=len(log) # 状态复位
+	open(r'd:\21_package.unpack','wb').write(st) # 这个结果文件的内容是“look at your logs” ，提示你打印中间的log信息，也就是程序中的状态字符
+	print 'done.'
+
+
+	# 另一个解法，直接根据特征字符选择解压方法或者反转
+	data=open(r'd:\package.pack','rb').read()
+	result = ""
+	while True:
+		if data.startswith('x\x9c'):
+			data = zlib.decompress(data)
+			result += ' '
+		elif data.startswith('BZh'):
+			data = bz2.decompress(data)
+			result += '#'
+		elif data.endswith('\x9cx'):
+			data = data[::-1]
+			result += '\n'
+		else:
+			print result
+			break
+
+
+
+# http://www.pythonchallenge.com/pc/hex/copper.html
+# 第22关
+# emulate
+# 网页注释中提示 <!-- or maybe white.gif would be more bright-->
+# 打开 http://www.pythonchallenge.com/pc/hex/white.gif
+# 看起来是个黑图片(竟然还叫white.gif，囧)，用photoshop打开，提示：
+# 这是具有动画效果的GIF。您只能查看一帧。在此文件之上存储会导致信息丢失。
+#
+# 多帧GIF？我咋看不出来呢。。。
+# 用acdsee2.44看会导致程序失去响应。。。 用acdsee9看不出啥来
+# 最后用TotalCommander里面的一个可以单独运行的插件Imagine看，发现是133帧的gif
 def level_22():
-	pass
+	f=GifImagePlugin.GifImageFile(r'd:\white.gif')
+	my=PIL.Image.new('RGB',(640,480)) # 用于画字符的图片
+	draw=PIL.ImageDraw.Draw(my)
+	curpoint=[0,0]
+	pointlist=[tuple(curpoint)]
+	frameno=1
+	while True:
+##		print 'frame=%d'%(frameno,)
+		try:
+			for y in range(98,103):#f.size[1]):
+				for x in range(98,103):#f.size[0]):
+					if f.getpixel((x,y))!=0:
+						print '%d: %d,%d=%d'%(frameno,x,y,f.getpixel((x,y))) # 可知每帧里面都有个调色板索引为8的点，坐标范围在(98,98)-(102,102)之间且坐标为偶数，相当于在3×3的九宫格中
+						k='%d-%d'%(x,y)
+						# 到此为止没有思路了。参考攻略，原来是网页上那个游戏摇杆的图片是暗示你九宫格的点是用矢量方法记录的，可以据此划出线条来，太有想象力了！
+						#(98,98) (100,98) (102,98)      (-1,-1) (0,-1) (1,-1)
+						#(98,100)(100,100)(102,100) ==  (-1,0)  (0,0)  (1,0)
+						#(98,102)(100,102)(102,102)     (-1,1)  (0,1)  (1,1)
+						d={ '98-98':(-5,-5),'100-98':(0,-5),'102-98':(5,-5),
+								'98-100':(-5,0),'100-100':(0,0),'102-100':(5,0),
+						    '98-102':(-5,5),'100-102':(0,5),'102-102':(5,5)}
+						if d[k]==(0,0):
+							print u'回到原点,开始画新字符'
+							if len(pointlist)>1:
+								draw.line(pointlist) # 画出字符
+								del pointlist[:] # 清空列表
+								curpoint[0]+=50 # 设定开始画字符的坐标，以免把上一个字符覆盖
+								curpoint[1]+=50
+								pointlist.append(tuple(curpoint))
+							continue
+						curpoint[0]+=d[k][0]
+						curpoint[1]+=d[k][1]
+						pointlist.append(tuple(curpoint))
+
+			f.seek(f.tell()+1) # 跳到下一帧
+			frameno+=1
+
+		except EOFError,e: # 最后一帧后会触发此异常
+			print 'end of frame.%d'%(frameno,) # 可知此GIF有133帧
+			draw.line(pointlist) # 画出最后一个字符
+			my.save(ur'd:\22_point.png','png') # 能看出画的字符为 bonus  ==>  http://www.pythonchallenge.com/pc/hex/bonus.html
+			break
+
+
+# http://www.pythonchallenge.com/pc/hex/bonus.html
+# 第23关
+# what is this module?
+# 网页注释中提示
+# <!--
+# TODO: do you owe someone an apology? now it is a good time to
+# tell him that you are sorry. Please show good manners although
+# it has nothing to do with this level.
+# -->
+#
+# <!-- 	it can't find it. this is an undocumented module. -->
+#
+# <!--
+# 'va gur snpr bs jung?'
+# -->
+# 这句话看起来需要移位转换一下
 def level_23():
-	pass
+	# 回到第一关的字符串移位转换
+	s='va gur snpr bs jung?'
+	for i in range(1,27):
+		print i
+		table = string.maketrans(string.ascii_lowercase,string.ascii_lowercase[i:]+string.ascii_lowercase[:i])
+		r=string.translate(s,table)
+		print r # i=13 时有意义 in the face of what?
+		# PS: 这种用26个字母中的第1个字母替换为第14个，第2个替换为第15个以此类推，
+		# 就是前一半字母和后一半字母交换的加密文本的方法有个专有术语叫 ROT13
+		#
+		# 至此又无思路，看攻略，我靠，原来真有个module就叫"this"
+		# import this 得到如下输出
+		# The Zen of Python, by Tim Peters
+		#
+		# Beautiful is better than ugly.
+		# Explicit is better than implicit.
+		# Simple is better than complex.
+		# Complex is better than complicated.
+		# Flat is better than nested.
+		# Sparse is better than dense.
+		# Readability counts.
+		# Special cases aren't special enough to break the rules.
+		# Although practicality beats purity.
+		# Errors should never pass silently.
+		# Unless explicitly silenced.
+		# In the face of ambiguity, refuse the temptation to guess.
+		# There should be one-- and preferably only one --obvious way to do it.
+		# Although that way may not be obvious at first unless you're Dutch.
+		# Now is better than never.
+		# Although never is often better than *right* now.
+		# If the implementation is hard to explain, it's a bad idea.
+		# If the implementation is easy to explain, it may be a good idea.
+		# Namespaces are one honking great idea -- let's do more of those!
+		#
+		# 所以 in the face of what? 的答案就是 ambiguity  ==>  http://www.pythonchallenge.com/pc/hex/ambiguity.html
+		# 不得不说，这个谜题太牛逼了！
+		# this.py 这个模块主要就是以ROT13形式加密保存了上面这些python的zen，在import此模块时解密打印出来
+
+# http://www.pythonchallenge.com/pc/hex/ambiguity.html
+# 第24关
+# from top to bottom
+# 好复杂的一张maze图呀
 def level_24():
 	pass
 def level_25():
@@ -744,4 +901,7 @@ if __name__=="__main__":
 	import email
 	import wave
 	import array
-	level_20()
+	import zlib
+	from PIL import ImageDraw
+	import string
+	level_23()
