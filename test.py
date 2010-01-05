@@ -2830,6 +2830,34 @@
 
 
 
+### 提取各字符串中两边被相同的大于2个字符围起来的字符串
+##import re
+###s='aaa111aaa,bbb222,333ccc,444ddd444,555eee666,fff777ggg,6,fff777ggg'
+##s='aaa111aaa,bbb222,333ccc,444ddd444,555eee666,fff777ggg,55555test55555'
+##result = [re.findall(r'^(.+)(.+?)\1$',i)[0][1] for i in s.split(',') if re.match(r'^(.+)(.+?)\1$',i)]
+##print result
+##result = [re.findall(r'(\w{2,})(\w+?)\1',i)[0][1] for i in s.split(',') if re.match(r'(\w{2,})(\w+)\1',i)]
+##print result
+##m=[i[1] for i in re.findall(r'(\w{2,})(\w+?)\1',s)]
+##print m
+
+
+
+
+##import sys
+##reload(sys)
+##sys.setdefaultencoding('utf8')
+##import re
+### 提取中文字符串
+##pchinese=re.compile(ur'([\u4e00-\u9fa5]+)+?',re.U)
+##s=u'12345测试用字符串67890,45这是另一个44哈'
+##m=pchinese.findall(s)
+##if m:
+##	print ' : '.join(m)
+##else:
+##	print 'no found!'
+##
+##
 
 
 
@@ -2837,7 +2865,26 @@
 
 
 
-# 把数字之间的空格去掉，又不影响数字和字符之间的位置，字符之间的空格不要去掉。
-a='ab c   12   45  6       8   xy z   1  5 67  890  ab z'
-import re
-print re.sub(r'(?<=\d)\s+(?=\d)','',a)
+
+
+
+
+
+
+### 替换类实例的方法，不影响到其他同类的实例
+##import types
+##class A(object):
+##	def __init__(self,v):
+##		self.v = v
+##	def foo(self):
+##		print 'foo',self.v
+##
+##def bar(self):
+##	print 'bar',self.v
+##
+##a = A(123)
+##a.foo()
+##a.foo = types.MethodType(bar,a,a.__class__)
+##a.foo()
+##b=A(456)
+##b.foo()

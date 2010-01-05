@@ -54,7 +54,8 @@ class CMB(object):
 
 		self.opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(self.cj),myHttpErrorHandler)
 ##		self.opener.addheaders = [('User-Agent', 'Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.9.1.3) Gecko/20090824 Firefox/3.5.3')]
-		self.opener.addheaders = [('User-Agent', 'Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1; SV1) chromeframe/4.0')]
+##		self.opener.addheaders = [('User-Agent', 'Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1; SV1) chromeframe/4.0')]
+		self.opener.addheaders = [('User-Agent', ' Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1; SV1; EmbeddedWB 14.52 from: http://www.bsalsa.com/ EmbeddedWB 14.52; GreenBrowser)')]
 		urllib2.install_opener(self.opener)
 		self.opener.handle_open['http'][0].set_http_debuglevel(1) # 设置debug以打印出发送和返回的头部信息
 		self.opener.handle_open['https'][0].set_http_debuglevel(1) # 设置debug以打印出发送和返回的头部信息
@@ -160,6 +161,8 @@ class CMB(object):
 		tbCardNoCtl.MaxLength=16
 		tbCardNoCtl.Text='6225760000167861'
 		self.data['cardno']=tbCardNoCtl.Value
+##		self.data['cardno']='NoufpmLXC2O15RHz*DcF53MuRztvVICQY7dODHF3LcWZ8ujF8X-EST4QmDJWVPC6WgHQW7iCgk56InW1iZaExw__'
+##		self.data['cartVersion']='38f2799a-ee1c-4111-a645-02c32fae24a3'
 
 		tbPasswordCtl= win32com.client.Dispatch("{0CA54D3F-CEAE-48AF-9A2B-31909CB9515D}")
 		tbPasswordCtl.MaxLength=6
@@ -195,10 +198,12 @@ class CMB(object):
 ##		header['Cookie']=c
 
 		header['Host']='ccclub.cmbchina.com'
-##		header['Connection']='keep-alive'
+		header['Connection']='Keep-Alive'
 		header['Content-Type']='application/json; charset=utf-8'
 		header['X-Requested-With']='XMLHttpRequest'
 		header['Referer']='https://ccclub.cmbchina.com/ccclub/Purchase/Pay.aspx'
+		header['Accept-Encoding']='gzip, deflate'
+		header['Cache-Control']='no-cache'
 		r=self.getResponse('https://ccclub.cmbchina.com/ccclub/Purchase/ForPurchase.asmx/GuestPay',
 	    data=None,
 ##			body=json.dumps(self.data,separators=(',',':')),

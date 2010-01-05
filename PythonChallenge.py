@@ -856,16 +856,303 @@ def level_23():
 		# 不得不说，这个谜题太牛逼了！
 		# this.py 这个模块主要就是以ROT13形式加密保存了上面这些python的zen，在import此模块时解密打印出来
 
+
+
+
+
 # http://www.pythonchallenge.com/pc/hex/ambiguity.html
 # 第24关
 # from top to bottom
 # 好复杂的一张maze图呀
+# 开始试着以白色为道路非白色为墙壁，用以前写过的A*算法找路径，结果没有路。
+# 又仔细放大图片查看边缘，原来右上角和左下角各有一个黑色像素
+# 这么说就是就是以白色为墙壁非白色为道路了，再次找路，找到。
+# 又没有头绪了，开始也许通路能组成图形字符，结果啥也看不出来。
+# 参考攻略，原来是依次将路径间隔着取所在的像素的r值，存入文件中。
+# 存成的文件是个zip，打开，里面有两个文件maze.jpg和mybroken.zip，其中maze.jpg
+# 打开是个图片，上面有lake字样  ==>  http://www.pythonchallenge.com/pc/hex/lake.html
+# 而mybroken.zip打开里面有个mybroken.gif，不过无法打开，似乎没有用。
 def level_24():
-	pass
+	class Node:
+		def __init__(self,parent,x,y,h):
+			self.parent=parent
+			self.x,self.y=x,y
+			self.hv = (x << 16) ^ y
+			self.g,self.h=0,h
+		def __repr__(self):
+			return '(%d,%d)'%(self.x,self.y)
+		def __eq__(self,other):
+			return self.hv == other
+		def __hash__(self):
+			return self.hv
+
+	class AStarTest:
+		def __init__(self,map_max_x,map_max_y,map):
+			self.openlist,self.closedlist=[],set()
+			self.mapMaxX,self.mapMaxY=map_max_x,map_max_y
+			print '%d %d'%(self.mapMaxX,self.mapMaxY)
+			self.map=map
+		def inCloseList(self,x,y):
+			u"""检查(x,y)是否在closedlist中"""
+			return (x << 16) ^ y in self.closedlist
+		def inOpenList(self,x,y):
+			u"""检查(x,y)是否在openlist中"""
+			for i,n in enumerate(self.openlist):
+				if n.x==x and n.y==y:
+					return i
+			return -1
+		def showPath(self,l,showmark):
+			u"""显示路径"""
+			tm=[] # 用来保存从起点到终点的路径坐标列表
+			for i in l:
+				tm.append((i.x,i.y))
+			if showmark: # 在新图中显示出路径来
+				f=PngImagePlugin.PngImageFile(r'd:\maze.png')
+				my=f.copy()
+				draw=ImageDraw.Draw(my)
+				draw.point(tm,showmark)# (0,0,255,255))
+				my.save(r'd:\maze_showpath.png','png')
+
+			# 将路径间隔着取像素的r值保存到zip文件中
+			f=PngImagePlugin.PngImageFile(r'd:\maze.png')
+			fo=open(r'd:\maze.zip','wb')
+			data=[]
+			for i in tm[1::2]: # 从第二个像素开始间隔着取
+				r,dummy,dummy,dummy=f.getpixel(i)
+				data.append(r)
+			fo.write(''.join([chr(item) for item in data]))
+			fo.close()
+
+		def SubNode(self,node,to_x,to_y):
+			u""" 返回节点node的有效子节点"""
+			subList=[
+				                  (node.x,node.y-1),                      \
+				(node.x-1,node.y),                    (node.x+1,node.y),\
+				                  (node.x,node.y+1),                   ]
+			for x,y in subList:
+				if self.map[y][x] !='#': # 坐标值有效
+					if not self.inCloseList(x,y): # 不在closedlist中
+						item= Node(node,x,y,sqrt((x-to_x)*(x-to_x)+(y-to_y)*(y-to_y))*1.2)
+						item.g=item.parent.g+1.0
+						yield item
+
+		def getPath(self,from_x,from_y,to_x,to_y,show_mark=None):
+			u"""获取两点间的路径
+			from_coord 起点
+			to_coord 终点
+			show_mark 用来显示路径的颜色
+			"""
+			print "(%d,%d)->(%d,%d)"%(from_x,from_y,to_x,to_y)
+
+			self.openlist.append(Node(None,from_x,from_y,0))
+			while self.openlist: # 重复如下的工作：
+				# a) 寻找开启列表中F值最低的格子。我们称它为当前格。
+				minf,minidx,curCoord=1000000,-1,None # 假设当前最新f为1000000
+				for i,n in enumerate(self.openlist):
+					if n.g+n.h<minf:
+						minf=n.g+n.h
+						curCoord=n
+						minidx=i
+				# b) 把它切换到关闭列表。
+				del self.openlist[minidx]
+				self.closedlist.add(curCoord)
+
+				# c) 对相邻的8格中的每一个
+				for item in self.SubNode(curCoord,to_x,to_y):
+					# 如果它不在开启列表中，把它添加进去。把当前格作为这一格的父节点。
+					# 记录这一格的F,G,和H值。
+					i=self.inOpenList(item.x,item.y)
+					if i==-1:
+						self.openlist.append(item)
+						# 保存路径。从目标格开始，沿着每一格的父节点移动直到回到起始格。这就是你的路径。
+						if item.x==to_x and item.y==to_y:
+							print "found %d,len(closedlist)=%d"%(item.g,len(self.closedlist))
+							l=[item]
+							p=item.parent
+							while p:
+								l.append(p)
+								p=p.parent
+							l.reverse()
+							self.showPath(l,show_mark)
+							return True
+
+					# 如果它已经在开启列表中，用G值为参考检查新的路径是否更好。更低的G值
+					# 意味着更好的路径。如果是这样，就把这一格的父节点改成当前格，并且
+					# 重新计算这一格的G和F值。如果你保持你的开启列表按F值排序，改变之后
+					# 你可能需要重新对开启列表排序。
+					else:
+						if item.g<self.openlist[i].g:
+							self.openlist[i].parent=curCoord
+							self.openlist[i].g=item.g
+
+
+			print "no path found!"
+			return False
+
+	# 准备地图数据
+	f=PngImagePlugin.PngImageFile(ur'd:\maze.png')
+	# 将maze转为数组形式存入m
+	m,line=[],[]
+	for y in range(f.size[1]):
+		for x in range(f.size[0]):
+			if f.getpixel((x,y))==(255,255,255,255):
+				line.append('#') # 白色为墙壁
+			else:
+				line.append('.') # 其他为通路
+		m.append(''.join(line))
+		del line[:]
+
+	# 调用A*算法找路
+	t=AStarTest(len(m[0]),len(m),m)
+	t.getPath(639,0,1,640,(0,0,255,255))
+
+
+
+
+
+
+# http://www.pythonchallenge.com/pc/hex/lake.html
+# 第25关
+# imagine how they sound
+# 一个类似puzzle拼图的图片
+# 网页注释提示 <!-- can you see the waves? -->
+# 脑子转不过来了，看攻略才知道是让你下 http://www.pythonchallenge.com/pc/hex/lake1.wav
+# 一直下到5，还有
+# 编程实现吧
 def level_25():
-	pass
+	# 将25个wave下载
+	def part1():
+		class myHTTPDefaultErrorHandler(urllib2.HTTPDefaultErrorHandler):
+			def http_error_default(self, req, fp, code, msg, hdrs):
+				if code==404: # 只处理404错误
+					return fp
+				raise HTTPError(req.get_full_url(), code, msg, hdrs, fp)
+		url='http://www.pythonchallenge.com/pc/hex/lake%d.wav'
+		baseurl='http://www.pythonchallenge.com/pc/'
+		usr,pwd='butter','fly'
+		passman=urllib2.HTTPPasswordMgr() # 密码管理
+		passman.add_password('pluses and minuses',baseurl,usr,pwd) # uri 参数不能是变量
+		authhandler=urllib2.HTTPBasicAuthHandler(passman) # 基本验证handler
+		cj=cookielib.CookieJar()
+		opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cj),authhandler,myHTTPDefaultErrorHandler)
+
+		opener.addheaders = [('User-Agent', 'Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1; SV1) chromeframe/4.0')]
+		urllib2.install_opener(opener)
+	##	opener.handle_open['http'][0].set_http_debuglevel(1) # 设置debug以打印出发送和返回的头部信息
+		h={}
+		beginidx=1
+		while True:
+			req=urllib2.Request(url%(beginidx,),None,headers=h)
+			r = opener.open(req,timeout=10)
+	##		print '%d=%d'%(beginidx,r.code)
+			if r and r.code!=404:
+				res=r.read()
+				open(r'd:\25_lake%d.wav'%(beginidx,),'wb').write(res)
+				beginidx+=1
+			else:
+				print 'done.%d'%(beginidx,) # 可以看到共有25个wave文件，正好和关数一样，也和图片上puzzle拼图的分块数目相同。
+				break
+
+	# 至此思路枯竭 找攻略吧。。。
+	# 找到一个比较强的攻略：http://garethrees.org/2007/05/07/python-challenge/#level-19
+	# 里面说由于用wave editor看波形啥都看不出来,猜想那些不是wave文件
+	# 假设是图像文件,由于wave.getnframes()=10800,考虑3字节为1像素,所以有3600像素,
+	# 可能是60*60的小图片
+	f=wave.open(ur'd:\25_lake1.wav')
+	print f.getnframes()
+	img=Image.new('RGB',(60,)*2)
+	img.fromstring(f.readframes(f.getnframes()))
+	img.show() # 能显示，似乎是一张图片的一部分，所以下面尝试将25张图片按5*5方式拼起来
+
+	imgs=[]
+	for i in range(1,26): # 将25个wave文件转成25个Image放入imgs
+		tmpw=wave.open(ur'd:\25_lake%d.wav'%(i,))
+		tmpi=Image.new('RGB',(60,)*2)
+		tmpi.fromstring(tmpw.readframes(tmpw.getnframes()))
+		imgs.append(tmpi)
+	img=Image.new('RGB',(300,)*2)
+	for i in range(len(imgs)):
+		img.paste(imgs[i],( 60*(i%5),60*(i//5))) # 依次将25个image存到一个300×300的大imge中
+##	img.show()
+	img.save(ur'd:\26_lake.png','png') # 图片显示 decent  ==>  http://www.pythonchallenge.com/pc/hex/decent.html
+
+##	# 下面是老外的解法，更简洁
+##	# 四行完成下载保存wave文件
+##	template = "http://butter:fly@www.pythonchallenge.com/pc/hex/lake%i.wav"
+##	fname=r'd:\25_lake%d.wav'
+##	for i in range(1, 26):
+##		urllib.urlretrieve(template % i,fname%i)
+##	# 完成拼接
+##	l=[]
+##	for i in range(1,26):
+##		f=wave.open(ur'd:\25_lake%d.wav'%i,'rb')
+##		l.append(f.readframes(f.getnframes()))
+##		f.close()
+##	im=Image.new('RGB',(300,300))
+##	for i in range(25):
+##		im.paste(Image.fromstring('RGB',(60,60),l[i]),( 60*(i%5),60*(i//5)))
+##	im.show()
+
+
+
+
+
+# http://www.pythonchallenge.com/pc/hex/decent.html
+# 第26关
+# be a man - apologize!
+# 图中是抓耳挠腮的猴子，下面有句话 Hurry up, I'm missing the boat
+# 网页注释中有 <!-- you've got his e-mail -->
+# 联想到前面第19关解一个邮件里面的音频文件，当时没有记那个email地址
+# 回去找，是 leopold.moz@pythonchallenge.com
+# 发封邮件到这个地址，既然要道歉，就说sorry吧
+# 得到如下输出
+# 发件人	Leopold Mozart <leopold.moz@pythonchallenge.com>
+# 发送至	keep.studying.everyday@gmail.com
+# 日期	2010年1月5日 下午11:58
+# 主题	Re: my broken zip Re: sorry
+# 邮送域	mail-yw0-f121.google.com
+#
+# Never mind that.
+#
+# Have you found my broken zip?
+#
+# md5: bbb8b499a0eef99b52c7f13f4e78c24b
+#
+# Can you believe what one mistake can lead to?
+#
+# 这让我想到第24关的那个mybroken.zip
+# 看来要想办法根据md5修复这个zip文件
+# 用winrar修复失败
+# 又没有思路了。。。
+# 看攻略的解法：
+# 信中的最后一句意思是你能相信错了一个字节就会出现这个吗？暗示你那个zip文件有一个字节错了。
+# 所以修复方法是，枚举每个字节的所有可能值，然后算md5，直到与已知的正确md5值相同为止。
+# 从修复好的zip文件里打开gif文件，里面显示 speed  ==> http://www.pythonchallenge.com/pc/hex/speed.html
+# 地址不对
+# 猜吧，发现正确的是speedboat ==> http://www.pythonchallenge.com/pc/hex/speedboat.html
 def level_26():
-	pass
+	data=open(ur'd:\mybroken.zip','rb').read()
+	for i in range(len(data)):
+		for c in range(256):
+			newdata=data[:i]+chr(c)+data[i+1:]
+			if hashlib.md5(newdata).hexdigest()=='bbb8b499a0eef99b52c7f13f4e78c24b':
+				open(ur'd:\mybroken_repaired.zip','wb').write(newdata) # 修复好的文件打开里面的mybroken.gif, 图中显示 speed
+				print 'repaired.'
+				return
+
+
+
+# http://www.pythonchallenge.com/pc/hex/speedboat.html
+# 第27关
+# between the tables
+# 图中是一只浆，和之字形的线条
+# 网页注释中 图片zigzag.jpg旁边有  <!-- did you say gif? -->
+# <!-- oh, and this is NOT a repeat of 14 -->
+#
+# 下载 http://www.pythonchallenge.com/pc/hex/zigzag.gif
+# 又是一张杂乱无章的灰度图
+# 既然提示不是第14关的重复，就不是螺旋重组图片，那么是什么呢？
+# zigzag是之字形的意思，试一下之字形重组图片吧。
 def level_27():
 	pass
 def level_28():
@@ -889,6 +1176,8 @@ if __name__=="__main__":
 	from PIL import PngImagePlugin
 	from PIL import JpegImagePlugin
 	from PIL import GifImagePlugin
+	from PIL import ImageDraw
+	from PIL import Image
 	import PIL
 	import bz2
 	import calendar
@@ -902,6 +1191,7 @@ if __name__=="__main__":
 	import wave
 	import array
 	import zlib
-	from PIL import ImageDraw
 	import string
-	level_23()
+	from math import sqrt
+	import hashlib
+	level_27()

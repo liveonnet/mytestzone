@@ -15,7 +15,7 @@ class Node:
 
 class AStarTest:
 	def __init__(self,map_max_x,map_max_y,map):
-		self.openlist,self.closedlist=[],Set()
+		self.openlist,self.closedlist=[],set()
 		self.mapMaxX,self.mapMaxY=map_max_x,map_max_y
 		print '%d %d'%(self.mapMaxX,self.mapMaxY)
 		self.map=map
@@ -164,7 +164,7 @@ def run():
 if __name__=='__main__':
 	import sys
 	from math import sqrt
-	from sets import Set
+##	from sets import Set
 	import cProfile,pstats
 	#cProfile.run('run()')
 	cProfile.run('run()','d:\\p.txt')
