@@ -164,7 +164,7 @@ def level_07():
 # 得到
 # un: 'BZh91AY&SYA\xaf\x82\r\x00\x00\x01\x01\x80\x02\xc0\x02\x00 \x00!\x9ah3M\x07<]\xc9\x14\xe1BA\x06\xbe\x084'
 # pw: 'BZh91AY&SY\x94$|\x0e\x00\x00\x00\x81\x00\x03$ \x00!\x9ah3M\x13<]\xc9\x14\xe1BBP\x91\xf08'
-# 看来是加密过后的用户名和密码了，联系到bee，busy，密文头两个字节为BZ，看来是bz格式 用 bz2
+# 看来是加密过后的用户名和密码了，联系到bee，busy，密文头两个字节为BZh，看来是bz格式 用 bz2
 def level_08():
 	un='BZh91AY&SYA\xaf\x82\r\x00\x00\x01\x01\x80\x02\xc0\x02\x00 \x00!\x9ah3M\x07<]\xc9\x14\xe1BA\x06\xbe\x084'
 	pw='BZh91AY&SY\x94$|\x0e\x00\x00\x00\x81\x00\x03$ \x00!\x9ah3M\x13<]\xc9\x14\xe1BBP\x91\xf08'
@@ -496,7 +496,7 @@ def level_17():
 			print info # 输出 BZh91AY%26SY%94%3A%E2I%00%00%21%19%80P%81%11%00%AFg%9E%A0+%00hE%3DM%B5%23%D0%D4%D1%E2%8D%06%A9%FA%26S%D4%D3%21%A1%EAi7h%9B%9A%2B%BF%60%22%C5WX%E1%ADL%80%E8V%3C%C6%A8%DBH%2632%18%A8x%01%08%21%8DS%0B%C8%AF%96KO%CA2%B0%F1%BD%1Du%A0%86%05%92s%B0%92%C4Bc%F1w%24S%85%09%09C%AE%24%90
 			break
 
-	# BZ打头的看来又需要bz2了
+	# BZh打头的看来又需要bz2了
 	info=urllib.unquote_plus(info) # 本来用unquote()，结果下面的解压就会失败。原来unquote_plus()是先将'+'替换为' '然后再调用unquote()，都是'+'惹的祸
 	print bz2.decompress(info) # 输出 is it the 26th already? call his father and inform him that "the flowers are on their way". he'll understand.
 
@@ -1151,16 +1151,206 @@ def level_26():
 #
 # 下载 http://www.pythonchallenge.com/pc/hex/zigzag.gif
 # 又是一张杂乱无章的灰度图
+# 点击船桨图片进入 http://www.pythonchallenge.com/pc/ring/bell.html 要新的用户名和密码
+# 看来这关的目标就是要找到用户名密码
 # 既然提示不是第14关的重复，就不是螺旋重组图片，那么是什么呢？
-# zigzag是之字形的意思，试一下之字形重组图片吧。
+# 又没思路了，下面是参考攻略完成的
 def level_27():
-	pass
+	zig=GifImagePlugin.GifImageFile(ur'd:\zigzag.gif')
+	zigdata=zig.tostring()
+	print ''.join(['%X'%(ord(i),) for i in zigdata[:10]]) # 查看前面几个字节，没有头绪
+
+	print len(zig.getcolors())
+	palette=zig.palette.getdata()[1][::3] # 获取其调色板
+	print ''.join(['%X'%(ord(i),) for i in palette[:10]])
+
+	t=string.maketrans(''.join([chr(i) for i in range(256)]),palette)
+	zigtrans=zigdata.translate(t) # 用调色板值转换像素值
+	print ''.join(['%X'%(ord(i),) for i in zigtrans[:10]]) # 还是看不出来什么，不过似乎转换后的数据除了第一个字节外都与原数据很相似
+
+	print zigdata[1:]==zigtrans[:-1]
+	# 尝试将两组数据中所有不相同的字节放在一起
+	deltas=filter(lambda p:p[0]!=p[1],zip(zigdata[1:],zigtrans[:-1]))
+	diffs=[''.join([p[i] for p in deltas]) for i in range(2)]
+	print diffs[0][:20] # 看起来是个bz文件
+	print diffs[1][:20]
+
+##	bz=bz2.BZ2Decompressor().decompress(diffs[0])
+	bz=bz2.decompress(diffs[0])
+	print len(bz)
+	print bz[:100] # 输出是python的关键字和地址 ../ring/bell.html
+
+	keywords=bz.split(' ')
+	keys={}
+	for k in keywords: keys[k]=1
+	print keys.keys()
+
+	print len(keywords)
+	print len(keys.keys()) # 很多关键字
+	print len(keywords)/len(keys.keys())
+
+	# 将不一样的像素按位置显示出来
+	im=Image.new('1',zig.size,0)
+	im.putdata([ p[0]==p[1] for p in zip(zigdata[1:],zigtrans[:-1])])
+	im.show() # 有个钥匙图样，左边是not，右边是word，下面是busy?
+	# 暗示 not key word
+	# 那么找找上面看到的那些关键字里面哪些不是key word
+
+	for k in keys.keys():
+		if not keyword.iskeyword(k):
+			print k # 打印出来 switch 和 repeat 不是关键字，../ring/bell.html不算。
+
+	# 用switch 和 repeat 分别做用户名和密码
+	k1,k2='switch','repeat'
+	t=((k1,k2),(k2,k1))
+	auth_handler=urllib2.HTTPBasicAuthHandler()
+	opener=urllib2.build_opener(auth_handler)
+	for i in t:
+		try:
+			auth_handler.add_password('the order matters','www.pythonchallenge.com',i[0],i[1])
+			r=opener.open('http://www.pythonchallenge.com/pc/ring/bell.html')
+			if r:
+				print 'got, %s,%s'%(i[0],i[1]) # 正确的用户名是repeat 密码是 switch  ==> http://www.pythonchallenge.com/pc/ring/bell.html
+				break
+		except urllib2.HTTPError:
+			pass
+
+
+
+
+# http://www.pythonchallenge.com/pc/ring/bell.html
+# 第28关
+# 图片是瀑布，湖，丛林，图片上面似乎覆盖着很多长短不一的竖条
+# many pairs ring-ring
+# 提示 RING-RING-RING say it out loud
+# 再次失去思路
+# 一个攻略说，传说中ring-ring-ring 反复读会变成green
+# 另一个则说，会变成grin
+# 先看grin  ==> http://www.pythonchallenge.com/pc/ring/grin.html
+# 网页上提示 you are not happy - you are feeling sick.
+# 再看green ==> http://www.pythonchallenge.com/pc/ring/green.html
+# 网页上提示 yes! green!
+# 解码图片上短竖条中的g值
 def level_28():
-	pass
+	im=PngImagePlugin.PngImageFile(ur'd:\bell.png')
+	l=[]
+	for y in range(im.size[1]):
+		for x in range(im.size[0]):
+			l.append(im.getpixel((x,y))[1])
+	print l[:10]
+	paris=[(l[i],l[i+1]) for i in range(0,len(l),2)] # 根据"my paris" 将像素两两分为一组
+	# 可以看出基本上每个paris内两像素之差都为42
+	print paris[:10]
+
+	diffs=[abs(i[0]-i[1]) for i in paris] # 计算两两像素之差的绝对值
+	print diffs[:10]
+
+	d=[x for x in diffs if x!=42] # 过滤掉差值等于42的
+	print d
+
+	s=''.join([chr(x) for x in d])  # 剩下的差值转为字符
+	print s # 输出 whodunnit().split()[0] ?
+
+	# 到此就有些让我奇怪了，whodunnit是到结尾才知道谋杀犯的侦探小说的意思，怎么会联想到Python发明人Guido Van Rossum ？
+	# 难道是发音像 who done it 谁做了这些
+	print 'Guido Van Rossum'.split()[0] # 输出 guido  ==> http://www.pythonchallenge.com/pc/ring/guido.html
+
+	# 从官方wiki看到获取所有像素的g值的更好方法是
+##	im=Image.open(ur'd:\bell.png')
+##	green=im.split()[1]
+##	greendata=green.getdata()
+
+
+
+# http://www.pythonchallenge.com/pc/ring/guido.html
+# 第29关
+# silence!
+# 发现网页源码后面后很多行长短不一的空格行
+# 用每行空格的数量组成列表
+# 转成字符串，是BZh打头
+# 用bz2解压字符串，得到 yankeedoodle
 def level_29():
-	pass
+	auth=urllib2.HTTPBasicAuthHandler()
+	auth.add_password('the order matters','www.pythonchallenge.com','repeat','switch')
+	openr=urllib2.build_opener(auth)
+	r=openr.open('http://www.pythonchallenge.com/pc/ring/guido.html')
+	data=r.read().split('\n') # 读取网页内容
+	print len(data)
+	sdata=[x for x in data if x.strip()==u''] # 过滤掉非空格行
+	print len(sdata)
+	s=''.join([chr(len(x)) for x in sdata]) # 把每行空格数转成字符
+	print s # 看到是BZh打头的
+	rslt=bz2.decompress(s) # 用bz2解压之
+	print rslt # 输出 Isn't it clear? I am yankeedoodle!  ==>  http://www.pythonchallenge.com/pc/ring/yankeedoodle.html
+
+
+
+
+# http://www.pythonchallenge.com/pc/ring/yankeedoodle.html
+# 第30关
+# relax you are on 30
+# 网页注释提示 <!-- while you look at the csv file -->
+# 下载 http://www.pythonchallenge.com/pc/ring/yankeedoodle.csv
+# 打开一看是逗号分割的，每行七个小于1的浮点数，总共有900多行
+# 没思路了，下面是攻略的解法
+# 基本思路是：将浮点数的总数(7367)做因式分解，得到53和139
+# 然后以此做为宽和高，用浮点数与256的乘积作为灰度值画成图片，
+# 调整方向后得到公式
+# 根据公式对浮点数3个一组操作，将结果转换为字符，得到下一关的名称。
 def level_30():
-	pass
+	f=open(ur'd:\yankeedoodle.csv')
+	data=' '.join(f.read().splitlines())
+	f.close()
+	fields=data.split(', ') # 注意是逗号加空格！如果只是空格，则后面拼message时只会得到乱码。
+	print len(fields)
+
+	n=len(fields) # 输出 7367
+
+	# 因式分解之
+	def factor(n):
+		"Adapted from http://www.math.utah.edu/~carlson/notes/python.pdf"
+		d = 2
+		factors = []
+		while not n % d:
+			factors.append(d)
+			n /= d
+		d = 3
+		while n > 1 and d * d <= n:
+			if not n % d:
+				factors.append(d)
+				n /= d
+			else:
+				d += 2
+		if n > 1:
+			factors.append(n)
+		return factors
+
+	print factor(n) # 输出 [53,139]，也就是说 53*139=7367
+
+##	im=Image.new('L',(53,139))
+##	idata=[chr(int(float(x)*256)) for x in fields]
+##	im.fromstring(''.join(idata))
+	im=Image.new('F',(53,139)) # 'F'表示直接使用浮点数
+	im.putdata(map(float,fields),256)
+	im=im.transpose(Image.FLIP_LEFT_RIGHT) # 左右翻转
+	im=im.transpose(Image.ROTATE_90) # 旋转90度
+	im.show() # 能看到公式 n=str(x[i])[5]+str(x[i+1])[5]+str(x[i+2])[6]
+
+	nlist=[]
+	for i in range(0,n-2,3):
+		n=chr(int(fields[i][5]+fields[i+1][5]+fields[i+2][6]))
+		nlist.append(n)
+	print ''.join(nlist)
+	# 输出 So, you found the hidden message.
+	# There is lots of room here for a long message, but we only need very little space to say "look at grandpa", so the rest is just garbage.
+	# ==>   http://www.pythonchallenge.com/pc/ring/grandpa.html
+
+# http://www.pythonchallenge.com/pc/ring/grandpa.html
+# 第31关
+# Where am I?
+# 点击岛礁图片 要求用户名和密码，uri是"island : country"
+# 网页注释中提示 <!-- short break, this ***REALLY*** has nothing to do with Python -->
+# 先猜猜哪个岛礁是哪里？
 def level_31():
 	pass
 def level_32():
@@ -1194,4 +1384,5 @@ if __name__=="__main__":
 	import string
 	from math import sqrt
 	import hashlib
-	level_27()
+	import keyword
+	level_30()
