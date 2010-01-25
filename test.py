@@ -2888,3 +2888,29 @@
 ##a.foo()
 ##b=A(456)
 ##b.foo()
+
+
+
+
+
+
+
+
+
+
+### 非递归全排列算法,比我以前写的要高效得多！
+##def perm(L):
+##	result = [L[0:1]]
+##	for i in L[1:]:
+##		tmpL = []
+##		for ele in result:
+##			for j in xrange(len(ele)+1):
+##				tmpL.append(ele[0:j]+[i]+ele[j:None])
+##		result = tmpL
+####	print result
+##	print len(result)
+##
+##import cProfile,pstats
+##cProfile.run('''perm(range(9))''',ur'd:\tmp-profile.txt')
+##p=pstats.Stats(ur'd:\tmp-profile.txt')
+##p.sort_stats('time', 'cum').print_stats()
