@@ -2817,7 +2817,7 @@
 #a= [[0]*5]*5 # 错误的方法!!!
 #print 'a=',a
 #a[2][3]=5
-#print 'a=',a # 此时 a 中的所有子列表的地4项都被赋值了
+#print 'a=',a # 此时 a 中的所有子列表的第4项都被赋值了
 
 #b = [[0]*5 for i in xrange(5)] # 正确的方法
 #print 'b=',b
@@ -2914,3 +2914,105 @@
 ##cProfile.run('''perm(range(9))''',ur'd:\tmp-profile.txt')
 ##p=pstats.Stats(ur'd:\tmp-profile.txt')
 ##p.sort_stats('time', 'cum').print_stats()
+
+
+
+
+
+
+
+
+### 发送机器IP地址到邮箱, 适用于 python 3.1
+##class SendIP2Mail(object):
+##	# 获取IP信息
+##	def get_ipinfo(self):
+##		local_ip = str(socket.gethostbyname_ex(socket.gethostname()))
+##		html  = urllib.request.urlopen("http://www.ip138.com/ip2city.asp").read().decode('gb2312')
+##		wan_ip =  re.search(r'\d+.\d+.\d+.\d+', html).group(0)
+##		return '  local ip: {0}, wan ip: {1}'.format(local_ip, wan_ip)
+##
+##
+##	#  使用gmail发送邮件代码
+##	def send_mail(self,authinfo, fromadd, toadd, subject, plainText,htmlText):
+##		strFrom = fromadd
+##		strTo = ', '.join(toadd)
+##
+##		server = authinfo.get('server')
+##		user = authinfo.get('user')
+##		passwd = authinfo.get('password')
+##
+##		if not (server and user and passwd):
+##				print('incomplete login info, exit now')
+##				return
+##
+##		msgroot = MIMEMultipart('alternative')
+##		msgroot['Subject'] = Header(subject, 'utf-8')
+##		msgroot['From'] = strFrom
+##		msgroot['To'] = strTo
+##		msgroot.preamble = 'This is a multi-part message in MIME format.'
+##
+##		#设定纯文本信息
+##		msgText = MIMEText(plainText.encode('utf-8'), 'plain', _charset='utf-8')
+##		msgroot.attach(msgText)
+##
+##		#设定HTML信息
+##		msgText = MIMEText(htmlText.encode('utf-8'), 'html', _charset='utf-8')
+##		msgroot.attach(msgText)
+##
+##		smtp = smtplib.SMTP()
+##		smtp.set_debuglevel(1)
+##		smtp.connect(server)
+##		smtp.starttls()# tls验证
+##		smtp.login(user, passwd)
+##		smtp.sendmail(strFrom, strTo, msgroot.as_string())
+##
+##	def dosend(self):
+##		authinfo={}
+##		authinfo['server'] = 'smtp.gmail.com'
+##		authinfo['user'] = 'username' # 发送方的gmail用户名
+##		authinfo['password'] = 'xxxxxx'# 密码
+##		fromadd = 'username@gmail.com'
+##		toadd = ['targetusername@gmail.com','username@gmail.com'] # 目标gmail地址
+##		subject = '测试'
+##		plaintext = 'ok'
+##		htmltext = '<div><p style="color:#200">ip地址：'
+##		htmltext += time.strftime('%Y-%m-%d %X',time.localtime())
+##		htmltext += ' ' + self.get_ipinfo()
+##		htmltext +='</p></div>'
+##		self.send_mail(authinfo,fromadd,toadd,subject,plaintext,htmltext)
+##
+##
+##	def run(self):
+##		ip_addr = self.get_ipinfo()
+##		self.dosend()
+##		while True:
+##			ip_now = self.get_ipinfo()
+##			if ip_addr != ip_now:
+##				self.dosend()
+##				ip_addr = ip_now
+##
+##			print("等待5分钟后再更新...")
+##			time.sleep(60*5) #sleep 5分钟
+##
+##import socket
+##import smtplib
+##import time
+##from email.mime.multipart import MIMEMultipart
+##from email.mime.text import MIMEText
+##from email.header import Header
+##import re
+##import urllib.request
+##SendIP2Mail().run()
+
+
+
+
+aa='''<html>
+<a href="http://www.000011.html">ab000011ab</a>hello123456world
+</html>'''
+
+import re
+#cc = re.sub(r'''</[^>]+?>([^<]*?)(\d{6})([^<]*)''',r'''<a href="http://www.\2.html">\2</a>''',aa)
+cc = re.search(r'''</[^>]+?>([^<]*?)(\d{6})([^<]*)''',aa)
+
+print(cc.groups())
