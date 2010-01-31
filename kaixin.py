@@ -266,7 +266,7 @@ class Kaixin(object):
 
 
 	def checkGarden(self):
-		"""地块	1,2, 3, 9,13
+		"""地块		1,2, 3, 9,13
 							4,5, 8,11,14
 							6,7,10,12,15
 		"""
@@ -279,7 +279,6 @@ class Kaixin(object):
 		del self.crops2steal[:]
 		for fname,fuid in self.friends4garden:
 			cnt+=1
-			#if fuid==u"115502":		continue # 跳过
 			logging.info(" %02d) 检查 %s(%s)... ",cnt,fname,fuid)
 			r = self.getResponse('http://www.kaixin001.com/house/garden/getconf.php',
 				{'verify':self.verify,'fuid':fuid})
@@ -315,6 +314,20 @@ class Kaixin(object):
 				if seedid in self.ignoreseeds:
 ##					logging.debug("忽略地块 %s 的 %s(%s)",farmnum,name,seedid)
 					continue
+
+				if seedid=='102': # 是摇钱树
+					if crops.find('点击可摇钱')!=-1: # 可摇钱
+						yaoqianr=self.getResponse('http://www.kaixin001.com/!house/!garden/yaoqianshu.php',
+							{'verify':self.verify,'fuid':fuid})
+						yaoqiantree = etree.fromstring(yaoqianr[0])
+						yaoqianret=yaoqiantree.xpath('ret')[0].text
+						if yaoqianret!='succ':
+							reason=tree.xpath('reason')[0].text
+							logging.info("===> !!! 摇钱失败! (%s,%s)",yaoqianret,reason)
+						else:
+							yaoqiantip=yaoqiantree.xpath('tip')[0].text
+							logging.info("===> *** 摇钱成功 %s(%s) (%s)",self.friends[fuid],fuid,yaoqiantip)
+
 
 				# 检查seedid是否是未知的
 				if seedid not in [x[1] for x in self.seedlist]: # 未知
@@ -474,6 +487,7 @@ class Kaixin(object):
 		anti=tree.xpath('anti')[0].text
 		if anti=='1':
 			logging.error("===> %s anti=1!!! 被反外挂检测到了 \n%s",tasklogstring,etree.tostring(tree,encoding='gbk').decode('gbk'))
+##			print (chr(7)*5)
 			return False
 
 		try:
@@ -542,6 +556,20 @@ class Kaixin(object):
 				pass
 ##				logging.info("没有发现在工作的狗狗!")
 
+			# 检查是否有在工作的巡查员
+			try:
+				policeurl=tree.xpath('policeurl')[0].text
+				policeetime=tree.xpath('policeetime')[0].text
+				if policeetime.find('距这位巡查员工作结束')!=-1:
+					logging.info("跳过！巡查员 在工作中(%s)",policeetime)
+					continue
+				else:
+					logging.info("巡查员在未知状态(%s)!",policeetime)
+			except IndexError:
+				pass
+##				logging.info("没有发现在工作的巡查员")
+
+
 			ret=tree.xpath('ret')[0].text
 			if ret!='succ':
 				logging.error("===>获取牧场信息失败!!! ret=%s (%s)",ret,etree.tostring(tree,encoding='gbk').decode('gbk'))
@@ -599,7 +627,7 @@ class Kaixin(object):
 
 							continue
 				except Exception as e:
-					logging.error("解析product2失败! (%s)(%s)",e,etree.tostring(i,encoding='gbk').decode('gbk'))
+					logging.error("解析product2/item失败! (%s)(%s)",e,etree.tostring(i,encoding='gbk').decode('gbk'))
 
 				logging.debug("(可偷) %d/%d (%s--%d--%d--%s)",num-stealnum,num,pname,num,stealnum,tips)
 				reslt=self.stealRanchProduct(fuidtext,skey,typetext)
@@ -636,12 +664,12 @@ class Kaixin(object):
 						if scd<self.internal:
 							k='ranch-p-%s-%s-%s'%(fuid,skey,'0')
 							if k in self.tasklist: # 相同的任务已经存在
-								if getattr(self.tasklist[k],'sleeptime',0)>scd: # 已存在的相同任务的等待时间更长,则替换为等待时间短的
+								if getattr(self.tasklist[k],'sleeptime',0)<scd: # 已存在的相同任务的等待时间更长,则替换为等待时间短的
 									logging.info("更新前删除相同任务")
 									self.tasklist[k].cancel()
 									del self.tasklist[k]
-								else: # 已存在的相同任务的等待时间已经是最短的，不必更新
-									logging.info("相同任务已经存在%s(%d<=%d)，略过",k,getattr(self.tasklist[k],'sleeptime',0),scd)
+								else: # 已存在的相同任务的等待时间已经是最长的，不必更新
+									logging.info("相同任务已经存在%s(%d>=%d)，略过",k,getattr(self.tasklist[k],'sleeptime',0),scd)
 									continue # 不更新
 							logging.info("加入定时执行队列 key=%s %d (%s,%s,%s)",k,scd,fuid,skey,'0')
 							if scd<60:
@@ -654,7 +682,7 @@ class Kaixin(object):
 							self.tasklist[k]=t
 
 				except Exception as e:
-					logging.exception("解析animals失败! (%s)",etree.tostring(i,encoding='gbk').decode('gbk'))
+					logging.exception("解析animals/item失败! (%s)",etree.tostring(i,encoding='gbk').decode('gbk'))
 
 	def stealRanchProduct(self,fuid,skey,typetext,taskkey=''):
 		"""steal one item 偷取一个牧场产品"""
