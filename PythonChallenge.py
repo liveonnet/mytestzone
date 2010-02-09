@@ -288,7 +288,7 @@ def level_11():
 # 试着找 http://www.pythonchallenge.com/pc/return/evil4.jpg
 # 提示 Bert is evil! go back!
 # 不得不说好变态，原来是http://www.pythonchallenge.com/pc/return/evil1.jpg暗示你要分成5堆
-# 下面就吧那个gfx文件按分牌方式分成五部分分别写入5个文件
+# 下面就把那个gfx文件按分牌方式分成五部分分别写入5个文件
 # 然后把5个文件改名为gif，得到dis pro port ional ity,最后的ity被划去，所以结果为 disproportional
 # 去 http://www.pythonchallenge.com/pc/return/disproportional.html
 def level_12():
@@ -545,7 +545,7 @@ def level_17():
 # 网页注释提示 <!-- maybe consider deltas.gz --> ==> http://www.pythonchallenge.com/pc/return/deltas.gz
 # 里面是个文件delta.txt，类似hex视图比较，左右两部分都以 89 50 4e 47 开头 42 60 82 结尾
 # 大概是两个文件，图像文件？
-# 完全没思路，抄老外的一个解法，主要是使用difflib.ndiff()比较两边的相似性，那是相当简介，佩服！
+# 完全没思路，抄老外的一个解法，主要是使用difflib.ndiff()比较两边的相似性，那是相当简洁，佩服！
 def level_18():
 	data=gzip.GzipFile(ur'd:\deltas.gz').read() # 打开gz文件读取数据
 	data=data.splitlines() # 转换为字符串列表
@@ -1351,8 +1351,110 @@ def level_30():
 # 点击岛礁图片 要求用户名和密码，uri是"island : country"
 # 网页注释中提示 <!-- short break, this ***REALLY*** has nothing to do with Python -->
 # 先猜猜哪个岛礁是哪里？
+# google 礁石 形状像性器官，找到 http://www.szvipp.com/ctrip/thalland/thallandscenici.html
+# 再google 拉迈海滩之南 性器官 找到 http://www.successfultravel.com.hk/travel_info/koh_samui.htm
+# 原来是泰国(thailand)的苏梅岛(koh samui)，这里有两块岩石分别很像男女性器官，分别叫做叫 祖父石 (Hin Ta) 和祖母石 (Hin Yai)
+# 用 kohsamui 和 thailand 做用户名密码，进入 http://www.pythonchallenge.com/pc/rock/grandpa.html
+# 网页显示 That was too easy. You are still on 31...
+# UFOs?
+# 没思路啦
+# 看攻略。。。。。和分形图有关
+# 网页中的图像名为 mandelbrot.gif
+# google 得知  mandelbrot 是法国数学家和分形理论家，其发现了著名的 mandelbrot集合
+##定义　　曼德布洛特集合（Mandelbrot set）是在复平面上组成分形的点的集合。Mandelbrot集合可以用复二次多项式f(z)=z^2+c来定义。
+##　　其中c是一个复参数。对于每一个c，从z=0开始对f(z)进行迭代
+##　　序列 (0, f(0), f(f(0)), f(f(f(0))), .......)的值或者延伸到无限大，或者只停留在有限半径的圆盘内。
+##　　曼德布洛特集合就是使以上序列不延伸至无限大的所有c点的集合。
+##　　从数学上来讲，曼德布洛特集合是一个复数的集合。一个给定的复数c或者属于曼德布洛特集合M，或者不是。
+# 根据网页注释中的提示 left="0.34" top="0.57" width="0.036" height="0.027"
+# 将上面的数字作为分形函数的参数，攻略上说参数“top”实际上应该是“bottom”
+# 自己按照给出的参数画出同样的分形图
+# 下面的分形函数 mandelbrot 直接抄袭自官方攻略
 def level_31():
-	pass
+	url = 'http://kohsamui:thailand@www.pythonchallenge.com/pc/rock/mandelbrot.gif'
+	ufos = Image.open(StringIO(urllib.urlopen(url).read()))
+	def mandelbrot(left=0.34, bottom=0.57, width=0.036, height=0.027,max=128, size=(640, 480)):
+		xstep = width / size[0]
+		ystep = height / size[1]
+		for y in xrange(size[1] - 1, -1, -1):
+			for x in xrange(size[0]):
+				c = complex(left + x * xstep, bottom + y * ystep)
+				z = 0+0j
+				for i in xrange(max):
+					z = z * z + c
+					if abs(z) > 2:
+						break
+				yield i
+	# 因式分解之
+	def factor(n):
+		"Adapted from http://www.math.utah.edu/~carlson/notes/python.pdf"
+		d = 2
+		factors = []
+		while not n % d:
+			factors.append(d)
+			n /= d
+		d = 3
+		while n > 1 and d * d <= n:
+			if not n % d:
+				factors.append(d)
+				n /= d
+			else:
+				d += 2
+		if n > 1:
+			factors.append(n)
+		return factors
+
+	mandel = ufos.copy() # 直接使用原图的类型、大小和调色板
+	mandel.putdata(list(mandelbrot()))
+	mandel.show() # 自己画出的图像看上去和给出的图一样
+	# 通过比较像素确定自己画的图和给出的图的差异
+	differences = [(a - b) for a, b in zip(ufos.getdata(), mandel.getdata()) if a != b]
+	print len(differences) # 输出 1679，说明实际上有1679处不同
+	print set(differences) # 输出set([-16, 16])，说明实际上所有差异都是16或者-16
+	# 调用level30里面用过的因式分解函数
+	print factor(len(differences)) # 输出 [23, 73] ，说明可以解析为23×73的图像
+	# 构造 23×73的图像，放大10倍后显示
+	plot=Image.new('L',(23,73))
+	plot.putdata([(i < 16) and 255 or 0 for i in differences]) # 是-16则设为255，否则设为0
+	plot.resize((230, 730)).show() # 显示一幅奇怪的图像
+	# google得知 上面显示的图是由位于美国波多里格的Arecibo天文台的目前全球最大的射电望远镜
+	# 发射到外太空以期与外星人沟通的无线电信号。Arecibo天文台的射电望远镜口径350米，就是007《黄金眼》
+	# 中出现的那个超大的湖水下的大碗(又想起了里面的漂亮MM ^_^)。
+	# 信号含义见 http://zh.wikipedia.org/wiki/%E9%98%BF%E9%9B%B7%E8%A5%BF%E5%8D%9A%E4%BF%A1%E6%81%AF
+	# 下一关的key就是 arecibo  ==> http://www.pythonchallenge.com/pc/rock/arecibo.html
+
+
+
+# http://www.pythonchallenge.com/pc/rock/arecibo.html
+# 第32关
+# etch-a-scetch
+# 好像是个游戏
+# 每行没列前头都用数字表示本行本列各连续方块的个数
+# 网页提示 Fill in the blanks <!-- for warmup.txt -->
+# 下载 http://www.pythonchallenge.com/pc/rock/warmup.txt
+### Dimensions
+##9 9
+### Horizontal
+##2 1 2
+##1 3 1
+##5
+##7
+##9
+##3
+##2 3 2
+##2 3 2
+##2 3 2
+### Vertical
+##2 1 3
+##1 2 3
+##3
+##8
+##9
+##8
+##3
+##1 2 3
+##2 1 3
+
 def level_32():
 	pass
 def level_33():
@@ -1385,4 +1487,5 @@ if __name__=="__main__":
 	from math import sqrt
 	import hashlib
 	import keyword
-	level_30()
+	from cStringIO import StringIO
+	level_32()
