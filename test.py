@@ -2900,13 +2900,15 @@
 
 ### 非递归全排列算法,比我以前写的要高效得多！
 ##def perm(L):
-##	result = [L[0:1]]
+##	result = [L[:1]]
 ##	for i in L[1:]:
-##		tmpL = []
-##		for ele in result:
-##			for j in xrange(len(ele)+1):
-##				tmpL.append(ele[0:j]+[i]+ele[j:None])
-##		result = tmpL
+##		result = [ ele[:j]+[i]+ele[j:] for ele in result for j in xrange(len(ele)+1) ]
+####	for i in L[1:]:
+####		tmpL = []
+####		for ele in result:
+####			for j in xrange(len(ele)+1):
+####				tmpL.append(ele[0:j]+[i]+ele[j:None])
+####		result = tmpL
 ####	print result
 ##	print len(result)
 ##
@@ -3007,12 +3009,13 @@
 
 
 
-aa='''<html>
-<a href="http://www.000011.html">ab000011ab</a>hello123456world
-</html>'''
-
-import re
-#cc = re.sub(r'''</[^>]+?>([^<]*?)(\d{6})([^<]*)''',r'''<a href="http://www.\2.html">\2</a>''',aa)
-cc = re.search(r'''</[^>]+?>([^<]*?)(\d{6})([^<]*)''',aa)
-
-print(cc.groups())
+##aa='''<html>
+##<a href="http://www.000011.html">ab000011ab</a>hello123456world
+##</html>'''
+##
+##import re
+###cc = re.sub(r'''</[^>]+?>([^<]*?)(\d{6})([^<]*)''',r'''<a href="http://www.\2.html">\2</a>''',aa)
+##cc = re.search(r'''</[^>]+?>([^<]*?)(\d{6})([^<]*)''',aa)
+##
+##print(cc.groups())
+##
