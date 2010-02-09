@@ -278,6 +278,7 @@ class Kaixin(object):
 		cnt=0
 		del self.crops2steal[:]
 		for fname,fuid in self.friends4garden:
+##		for fuid,fname in self.friends.items():
 			cnt+=1
 			logging.info(" %02d) 检查 %s(%s)... ",cnt,fname,fuid)
 			r = self.getResponse('http://www.kaixin001.com/house/garden/getconf.php',
@@ -322,11 +323,26 @@ class Kaixin(object):
 						yaoqiantree = etree.fromstring(yaoqianr[0])
 						yaoqianret=yaoqiantree.xpath('ret')[0].text
 						if yaoqianret!='succ':
-							reason=tree.xpath('reason')[0].text
+							reason=yaoqiantree.xpath('reason')[0].text
 							logging.info("===> !!! 摇钱失败! (%s,%s)",yaoqianret,reason)
 						else:
 							yaoqiantip=yaoqiantree.xpath('tip')[0].text
-							logging.info("===> *** 摇钱成功 %s(%s) (%s)",self.friends[fuid],fuid,yaoqiantip)
+							logging.info("===> *** 摇钱成功 %s(%s) (%s)",fname,fuid,yaoqiantip)
+
+				if seedid=='198': # 阳光果粒橙
+					logging.info("阳光果粒橙! (%s)",crops)
+					if crops.find('点击可摇奖')!=-1: # 可摇奖
+						cropsid=i.xpath('cropsid')[0].text
+						yaojiangr=self.getResponse('http://www.kaixin001.com/!house/!garden//guolicheng/yj.php',
+							{'verify':self.verify,'fuid':fuid,'cropsid':cropsid})
+						yaojiangtree=etree.fromstring(yaojiangr[0])
+						yaojiangret=yaojiangtree.xpath('ret')[0].text
+						if yaojiangret!='succ':
+							reason=yaojiangtree.xpath('reason')[0].text
+							logging.info("===> !!! 摇奖失败!(%s,%s)",yaojiangret,reason)
+						else:
+							reason=yaojiangtree.xpath('reason')[0].text
+							logging.info("===> *** 摇奖完成!(%s,%s)",yaojiangret,reason)
 
 
 				# 检查seedid是否是未知的
@@ -725,6 +741,8 @@ class Kaixin(object):
 	def run(self):
 		#self.getSeedList()
 		try:
+##			self.yaoqian()
+##			return
 			while True:
 				if self.bGetGranaryInfo:
 					self.getGranaryInfo()
@@ -1341,6 +1359,107 @@ class Kaixin(object):
 
 		return (res,rurl)
 
+	def yaoqian(self):
+		"""地块		1,2, 3, 9,13
+							4,5, 8,11,14
+							6,7,10,12,15
+		"""
+		if not self.signed_in:
+			self.signin()
+		if self.signed_in:
+			del self.friends4garden[:]
+			r = self.getResponse('http://www.kaixin001.com/app/app.php?aid=1062&url=garden/index.php')
+			m = re.search('var g_verify = "(.+)";', r[0].decode())
+			self.verify = m.group(1)
+		else:
+			return False
+		logging.info("共检查%d个好友的花园有没有摇钱树.",len(self.friends))
+
+		cnt=0
+		for fuid, fname in self.friends.items():
+			cnt+=1
+			logging.info(" %02d) 检查 %s(%s)... ",cnt,fname,fuid)
+			r = self.getResponse('http://www.kaixin001.com/house/garden/getconf.php',
+				{'verify':self.verify,'fuid':fuid})
+			tree = etree.fromstring(r[0])
+
+			items=tree.xpath('garden/item')
+#			logging.debug("total %d farms in this garden",len(items))
+			for i in items:
+				farmnum=i.xpath('farmnum')[0].text
+
+				# -1=枯死 1=生长中 2=成熟 3=采光未犁地
+				try:
+					cropsstatus=i.xpath('cropsstatus')[0].text
+				except IndexError:
+##					logging.debug("地块 %s 为空",farmnum)
+					continue
+
+				if cropsstatus=='-1':
+##					logging.debug("地块 %s 为枯死的作物",farmnum)
+					continue
+				if cropsstatus=='3':
+##					logging.debug("地块 %s 已经收获光未犁地",farmnum)
+					continue
+
+##				logging.debug("地块 %s cropsstatus=%s",farmnum,cropsstatus)
+
+##				name=i.xpath('name')[0].text
+				crops=i.xpath('crops')[0].text
+				seedid=i.xpath('seedid')[0].text
+
+				if seedid=='198': # 阳光果粒橙
+					logging.info("阳光果粒橙! (%s)",crops)
+##				if seedid=='102': # 是摇钱树
+##					logging.info("有摇钱树!")
+##					if crops.find('点击可摇钱')!=-1: # 可摇钱
+##						r=self.getResponse('http://www.kaixin001.com/!house/!garden/yaoqianshu.php',
+##							{'verify':self.verify,'fuid':fuid})
+##						tree = etree.fromstring(r[0])
+##						ret=tree.xpath('ret')[0].text
+##						if ret!='succ':
+##							reason=tree.xpath('reason')[0].text
+##							logging.info("===> !!! 摇钱失败! (%s,%s)",ret,reason)
+##						else:
+##							tip=tree.xpath('tip')[0].text
+##							logging.info("===> *** 摇钱成功 %s(%s) (%s)",fname,fuid,tip)
+##
+		return True
+
+
+	def getFishinfo(self):
+		if not self.signed_in:
+			self.signin()
+
+		if self.signed_in:
+			if not self.verify:
+				r = self.getResponse('http://www.kaixin001.com/!fish/index.php?t=62')
+				m = re.search('var g_verify = "(.+)";', r[0].decode())
+				self.verify = m.group(1)
+				logging.info("verify=%s",self.verify)
+		else:
+			logging.info("未登录!")
+			return
+
+		r=self.getResponse('http://www.kaixin001.com/!fish/!fishlist.php',
+			{'verify':self.verify})
+		tree=etree.fromstring(r[0])
+		ret=tree.xpath('ret')[0].text
+		if ret!='succ':
+			reason=tree.xpath('reason')[0].text
+			logging.info("获取鱼苗店信息失败! (%s,%s)",ret,reason)
+			return
+		fishs=tree.xpath('fish/item')
+		for item in fishs:
+			fid=item.xpath('fid')[0].text
+			name=item.xpath('name')[0].text
+			price=item.xpath('price')[0].text
+			mprice=item.xpath('mprice')[0].text # 价格需要×10
+			maxweight=item.xpath('maxweight')[0].text # 重量需要%10
+##			logging.info("%s(%s) 买价 %.1f 卖价 %.1f 最大 %.1f 斤",name,fid,float(price)*10,float(mprice)*10,float(maxweight)/10)
+			if float(mprice)*10>5000:
+				logging.info("%s(%s) 买价 %.1f 卖价 %.1f 最大 %.1f 斤",name,fid,float(price)*10,float(mprice)*10,float(maxweight)/10)
+
 if __name__=='__main__':
 	import logging
 	from lxml import etree
@@ -1361,9 +1480,10 @@ if __name__=='__main__':
 	import imp
 	from html.entities import name2codepoint
 
-	#i=Kaixin(ur'd:\kaixin.ini')
-	#i.run()
-	import cProfile,pstats
-	cProfile.run('''Kaixin(r'd:\kaixin.ini').run()''',r'd:\kaixin-profile.txt')
+	i=Kaixin(r'd:\kaixin.ini')
+##	i.getFishinfo()
+	i.run()
+##	import cProfile,pstats
+##	cProfile.run('''Kaixin(r'd:\kaixin.ini').run()''',r'd:\kaixin-profile.txt')
 	#p=pstats.Stats(ur'd:\kaixin-profile.txt')
 	#p.sort_stats('time', 'cum').print_stats('kaixin')
