@@ -153,8 +153,11 @@ class Kaixin(object):
 		self.FarmBlock2Check=['1','2','3','9','13','4','5','8','11','14']
 
 		self.verify=''
+
+		self.cafeverify='' # 餐厅专用verify
 		self.dish2cook='5' # 自动做的菜
 		self.num4dish2cook=13 # 自动做的菜的数量
+		self.consumepertime=15 # 每次送多少菜给客人
 
 		logging.info("%s 初始化完成.",self.__class__.__name__)
 
@@ -1516,11 +1519,11 @@ class Kaixin(object):
 		r=self.getResponse('http://www.kaixin001.com/!cafe/index.php')
 		m = re.search('verify=(.+?)&', r[0].decode())
 ##		logging.info("verify=%s",m.group(1))
-		self.verify = m.group(1)
+		self.cafeverify = m.group(1)
 
 		r = self.getResponse('http://www.kaixin001.com/cafe/api_friendlist.php?%s'%
 			(urllib.parse.urlencode(
-			{'verify':self.verify,'rand':"%.16f"%(random(),)}),),
+			{'verify':self.cafeverify,'rand':"%.16f"%(random(),)}),),
 			None)
 		tree = etree.fromstring(r[0])
 
@@ -1538,7 +1541,7 @@ class Kaixin(object):
 				logging.info("%s 发现 %s(%s) 需要帮助...",task_key,fname,fuid)
 				r = self.getResponse('http://www.kaixin001.com/cafe/api_userevent.php?%s'%
 					(urllib.parse.urlencode(
-					{'verify':self.verify,'uid':fuid,'r':"%.16f"%(random(),)}),),
+					{'verify':self.cafeverify,'uid':fuid,'r':"%.16f"%(random(),)}),),
 					None)
 				tree = etree.fromstring(r[0])
 ##				logging.debug("===> api_userevent返回: %s\n",etree.tostring(tree,encoding='gbk').decode('gbk'))
@@ -1547,7 +1550,7 @@ class Kaixin(object):
 
 				r = self.getResponse('http://www.kaixin001.com/cafe/api_doevent.php?%s'%
 					(urllib.parse.urlencode(
-					{'verify':self.verify,'uid':fuid,'ret':1}),),
+					{'verify':self.cafeverify,'uid':fuid,'ret':1}),),
 					None)
 				tree = etree.fromstring(r[0])
 ##				logging.debug("===> api_doevent返回: %s\n",etree.tostring(tree,encoding='gbk').decode('gbk'))
@@ -1565,7 +1568,7 @@ class Kaixin(object):
 		# 清洗灶台
 		r = self.getResponse('http://www.kaixin001.com/cafe/api_stoveclean.php?%s'%
 	    (urllib.parse.urlencode(
-	    {'verify':self.verify,'cafeid':cafeid,'orderid':orderid,'rand':"%.16f"%(random(),)}),),
+	    {'verify':self.cafeverify,'cafeid':cafeid,'orderid':orderid,'rand':"%.16f"%(random(),)}),),
 	    None)
 		tree=etree.fromstring(r[0])
 ##		logging.debug("===> %s api_stoveclean返回: %s\n",task_key,etree.tostring(tree,encoding='gbk').decode('gbk'))
@@ -1584,21 +1587,25 @@ class Kaixin(object):
 		# 端到餐台
 		r = self.getResponse('http://www.kaixin001.com/cafe/api_dish2counter.php?%s'%
 	    (urllib.parse.urlencode(
-	    {'verify':self.verify,'cafeid':cafeid,'orderid':orderid,'rand':"%.16f"%(random(),)}),),
+	    {'verify':self.cafeverify,'cafeid':cafeid,'orderid':orderid,'rand':"%.16f"%(random(),)}),),
 	    None)
 		tree = etree.fromstring(r[0])
 ##		logging.debug("===> %s api_dish2counter 返回: %s\n",task_key,etree.tostring(tree,encoding='gbk').decode('gbk'))
 
 		ret=tree.xpath('ret')[0].text
 		if ret=='succ':
-			orderid=tree.xpath('orderid')[0].text
-			torderid=tree.xpath('torderid')[0].text
-			addevalue=tree.xpath('addevalue')[0].text
-			foodnum=tree.xpath('foodnum')[0].text
-			evalue=tree.xpath('account/evalue')[0].text
-			logging.info("===> %s 成功将 %s 从灶台 %s -->餐台 %s, 现在餐台上数量 %s 经验 %s(+%s)",
-				task_key,name,orderid,torderid,foodnum,evalue,addevalue)
-			self.cafe_dish2customer(cafeid,torderid,name,self.num4dish2cook,5,task_key)
+			try:
+				orderid=tree.xpath('orderid')[0].text
+				torderid=tree.xpath('torderid')[0].text
+				addevalue=tree.xpath('addevalue')[0].text
+				foodnum=tree.xpath('foodnum')[0].text
+				evalue=tree.xpath('account/evalue')[0].text
+				logging.info("===> %s 成功将 %s 从灶台 %s -->餐台 %s, 现在餐台上数量 %s 经验 %s(+%s)",
+					task_key,name,orderid,torderid,foodnum,evalue,addevalue)
+			except IndexError as e:
+				logging.info("解析 orderid/torderid/addevalue/foodnum/evalue时失败！\n%s\n%s",e,etree.tostring(tree,encoding='gbk').decode('gbk'))
+			else:
+				self.cafe_dish2customer(cafeid,torderid,name,self.num4dish2cook,self.consumepertime,task_key)
 		else:
 			logging.error("===> %s 灶台 %s 端到餐台失败!!! ret=%s (%s)",
 				task_key,orderid,ret,etree.tostring(tree,encoding='gbk').decode('gbk'))
@@ -1614,14 +1621,14 @@ class Kaixin(object):
 				return False
 
 
-		r=self.getResponse('http://www.kaixin001.com/!cafe/index.php')
-		m = re.search('verify=(.+?)&', r[0].decode())
-##		logging.info("verify=%s",m.group(1))
-		self.verify = m.group(1)
+##		r=self.getResponse('http://www.kaixin001.com/!cafe/index.php')
+##		m = re.search('verify=(.+?)&', r[0].decode())
+####		logging.info("verify=%s",m.group(1))
+##		self.cafeverify = m.group(1)
 
 		r = self.getResponse('http://www.kaixin001.com/cafe/api_getconf.php?%s'%
 			(urllib.parse.urlencode(
-			{'verify':self.verify,'rand':"%.16f"%(random(),),'loading':1}),),
+			{'verify':self.cafeverify,'rand':"%.16f"%(random(),),'loading':1}),),
 			None)
 		tree=etree.fromstring(r[0])
 
@@ -1727,7 +1734,7 @@ class Kaixin(object):
 				continue
 			logging.info("餐厅 %s 有 %s/%s %s(%s)",orderid,num,foodnum,name,dishid)
 ##			logging.debug("餐台信息: %s\n",etree.tostring(item,encoding='gbk').decode('gbk'))
-			self.cafe_dish2customer(cafeid,orderid,name,num,5)
+			self.cafe_dish2customer(cafeid,orderid,name,num,self.consumepertime)
 
 	def cafe_dish2customer(self,cafeid,orderid,dishname,num,pernum,task_key=''):
 		logging.info("%s 消费餐台 %s 上的 %s, 总共 %s, 每次 %d ...",
@@ -1739,7 +1746,7 @@ class Kaixin(object):
 		while numleft:
 			r = self.getResponse('http://www.kaixin001.com/cafe/api_dish2customer.php?%s'%
 				(urllib.parse.urlencode(
-				{'verify':self.verify,'cafeid':cafeid,'orderid':orderid,'num':pernum,'rand':"%.16f"%(random(),)}),),
+				{'verify':self.cafeverify,'cafeid':cafeid,'orderid':orderid,'num':pernum,'rand':"%.16f"%(random(),)}),),
 				None)
 			tree=etree.fromstring(r[0])
 ##			logging.debug("===> api_dish2customer 返回: %s\n",etree.tostring(tree,encoding='gbk').decode('gbk'))
@@ -1763,6 +1770,8 @@ class Kaixin(object):
 			logging.info("===> %s 成功消费了餐台 %s 上的 %s, %s->%s, 现金 %s(+%s), 魅力 %.1f, next %d",
 				task_key,orderid,dishname,foodnum,leftnum,cash,addcash,int(pvalue)/100.0,pernum)
 
+##			time.sleep(0.5)
+
 		return True
 
 
@@ -1778,7 +1787,7 @@ class Kaixin(object):
 
 		r = self.getResponse('http://www.kaixin001.com/cafe/api_checkfood.php?%s'%
 			(urllib.parse.urlencode(
-			{'verify':self.verify,'cafeid':cafeid,'orderid':orderid,'rand':"%.16f"%(random(),)}),),
+			{'verify':self.cafeverify,'cafeid':cafeid,'orderid':orderid,'rand':"%.16f"%(random(),)}),),
 			None)
 		tree = etree.fromstring(r[0])
 
@@ -1823,7 +1832,7 @@ class Kaixin(object):
 ##			logging.info("第 %d 次 ...",i+1)
 			r = self.getResponse('http://www.kaixin001.com/cafe/api_cooking.php?%s'%
 				(urllib.parse.urlencode(
-				{'verify':self.verify,'cafeid':cafeid,'orderid':orderid,'dishid':dishid,'rand':"%.16f"%(random(),)}),),
+				{'verify':self.cafeverify,'cafeid':cafeid,'orderid':orderid,'dishid':dishid,'rand':"%.16f"%(random(),)}),),
 				None)
 			tree=etree.fromstring(r[0])
 ##			logging.debug("===> %s api_cooking: %s\n",task_key,etree.tostring(tree,encoding='gbk').decode('gbk'))
@@ -1892,7 +1901,7 @@ class Kaixin(object):
 		r=self.getResponse('http://www.kaixin001.com/!cafe/index.php')
 		m = re.search('verify=(.+?)&', r[0].decode())
 ##		logging.info("verify=%s",m.group(1))
-		self.verify = m.group(1)
+		self.cafeverify = m.group(1)
 
 		s=StringIO()
 		pageno=0
@@ -1900,7 +1909,7 @@ class Kaixin(object):
 		while bnext=='1':
 			r = self.getResponse('http://www.kaixin001.com/cafe/api_dishlist.php?%s'%
 				(urllib.parse.urlencode(
-				{'verify':self.verify,'page':pageno,'r':"%.16f"%(random(),)}),),
+				{'verify':self.cafeverify,'page':pageno,'r':"%.16f"%(random(),)}),),
 				None)
 			tree=etree.fromstring(r[0])
 ##			logging.debug("===> api_dishlist: %s\n",etree.tostring(tree,encoding='gbk').decode('gbk'))
