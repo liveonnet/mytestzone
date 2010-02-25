@@ -157,7 +157,7 @@ class Kaixin(object):
 		self.cafeverify='' # 餐厅专用verify
 		self.dish2cook='5' # 自动做的菜
 		self.num4dish2cook=13 # 自动做的菜的数量
-		self.consumepertime=15 # 每次送多少菜给客人
+		self.consumepertime=13 # 每次送多少菜给客人
 
 		logging.info("%s 初始化完成.",self.__class__.__name__)
 
@@ -576,7 +576,10 @@ class Kaixin(object):
 				{'verify':self.verify,'fuid':fuid,'r':"%.16f"%(random(),),
 				'dragon_shake':'move'}),),
 				None)
-			tree = etree.fromstring(r[0])
+			try:
+				tree = etree.fromstring(r[0])
+			except etree.XMLSyntaxError as e:
+				logging.info("tree = etree.fromstring(r[0]) 出错!\n%s\n%s",e,r[0])
 
 			# 检查是否有在工作的狗狗
 			try:
@@ -1303,11 +1306,18 @@ class Kaixin(object):
 				logging.info("verify=%s",self.verify)
 
 			logging.debug("获取动物产品 %s 具体信息 ... ",i_id)
-			r = self.getResponse('http://www.kaixin001.com/!house/!ranch/myfruitinfo.php',
-				{'verify':self.verify,'type':i_type,'id':i_id})
-			logging.debug("%s %s myfruitinfo:%s",i_type,i_id,r[0].decode('utf8'))
-			time.sleep(1)
-			tree = etree.fromstring(r[0])
+			for trycnt in range(3):
+				r = self.getResponse('http://www.kaixin001.com/!house/!ranch/myfruitinfo.php',
+					{'verify':self.verify,'type':i_type,'id':i_id})
+				logging.debug("%s %s myfruitinfo:%s",i_type,i_id,r[0].decode('utf8'))
+				time.sleep(1)
+				try:
+					tree = etree.fromstring(r[0])
+				except etree.XMLSyntaxError as e:
+					logging.info("tree = etree.fromstring(r[0]) 出错!\n%s",e)
+					continue
+				else:
+					break
 
 			ret=tree.xpath('ret')[0].text
 			if ret!='succ':
@@ -1516,10 +1526,8 @@ class Kaixin(object):
 				return False
 
 		logging.info("%s 查看餐厅是否需要帮助...",task_key)
-		r=self.getResponse('http://www.kaixin001.com/!cafe/index.php')
-		m = re.search('verify=(.+?)&', r[0].decode())
-##		logging.info("verify=%s",m.group(1))
-		self.cafeverify = m.group(1)
+		if not self.cafe_updateVerify(False):
+			return False
 
 		r = self.getResponse('http://www.kaixin001.com/cafe/api_friendlist.php?%s'%
 			(urllib.parse.urlencode(
@@ -1565,22 +1573,31 @@ class Kaixin(object):
 
 	def cafe_stoveclean(self,cafeid,orderid,task_key=''):
 		logging.info("%s 灶台 %s 需要清洁",task_key,orderid)
-		# 清洗灶台
-		r = self.getResponse('http://www.kaixin001.com/cafe/api_stoveclean.php?%s'%
-	    (urllib.parse.urlencode(
-	    {'verify':self.cafeverify,'cafeid':cafeid,'orderid':orderid,'rand':"%.16f"%(random(),)}),),
-	    None)
-		tree=etree.fromstring(r[0])
-##		logging.debug("===> %s api_stoveclean返回: %s\n",task_key,etree.tostring(tree,encoding='gbk').decode('gbk'))
-		ret=tree.xpath('ret')[0].text
-		if ret!='succ':
-			logging.info("===> %s 清洁灶台 %s 失败!\n%s",task_key,orderid,etree.tostring(tree,encoding='gbk').decode('gbk'))
-			return False
+		for i in range(5):
+			# 清洗灶台
+			r = self.getResponse('http://www.kaixin001.com/cafe/api_stoveclean.php?%s'%
+				(urllib.parse.urlencode(
+				{'verify':self.cafeverify,'cafeid':cafeid,'orderid':orderid,'rand':"%.16f"%(random(),)}),),
+				None)
+			try:
+				tree=etree.fromstring(r[0])
+			except etree.XMLSyntaxError as e:
+				logging.info("tree=etree.fromstring(r[0]) 出错!\n%s",e)
+				self.cafe_updateVerify()
+				continue
 
-		addcash=tree.xpath('addcash')[0].text
-		addevalue=tree.xpath('addevalue')[0].text
-		logging.info("===> %s 清洁灶台 %s 成功, 现金 %s  经验 +%s",task_key,orderid,addcash,addevalue)
-		return True
+	##		logging.debug("===> %s api_stoveclean返回: %s\n",task_key,etree.tostring(tree,encoding='gbk').decode('gbk'))
+			ret=tree.xpath('ret')[0].text
+			if ret!='succ':
+				logging.info("===> %s 清洁灶台 %s 失败!\n%s",task_key,orderid,etree.tostring(tree,encoding='gbk').decode('gbk'))
+				break
+
+			addcash=tree.xpath('addcash')[0].text
+			addevalue=tree.xpath('addevalue')[0].text
+			logging.info("===> %s 清洁灶台 %s 成功, 现金 %s  经验 +%s",task_key,orderid,addcash,addevalue)
+			return True
+
+		return False
 
 	def cafe_dish2counter(self,cafeid,orderid,name,task_key=''):
 		logging.info("%s 将 灶台 %s 的 %s 端到餐台...",task_key,orderid,name)
@@ -1619,12 +1636,6 @@ class Kaixin(object):
 			self.signin()
 			if not self.signed_in:
 				return False
-
-
-##		r=self.getResponse('http://www.kaixin001.com/!cafe/index.php')
-##		m = re.search('verify=(.+?)&', r[0].decode())
-####		logging.info("verify=%s",m.group(1))
-##		self.cafeverify = m.group(1)
 
 		r = self.getResponse('http://www.kaixin001.com/cafe/api_getconf.php?%s'%
 			(urllib.parse.urlencode(
@@ -1785,11 +1796,19 @@ class Kaixin(object):
 ##				return False
 		logging.info("%s 检查灶台 %s ... ",task_key,orderid)
 
-		r = self.getResponse('http://www.kaixin001.com/cafe/api_checkfood.php?%s'%
-			(urllib.parse.urlencode(
-			{'verify':self.cafeverify,'cafeid':cafeid,'orderid':orderid,'rand':"%.16f"%(random(),)}),),
-			None)
-		tree = etree.fromstring(r[0])
+		for trycnt in range(3):
+			r = self.getResponse('http://www.kaixin001.com/cafe/api_checkfood.php?%s'%
+				(urllib.parse.urlencode(
+				{'verify':self.cafeverify,'cafeid':cafeid,'orderid':orderid,'rand':"%.16f"%(random(),)}),),
+				None)
+			try:
+				tree = etree.fromstring(r[0])
+			except etree.XMLSyntaxError as e:
+				logging.info("tree=etree.fromstring(r[0]) 出错!\n%s",e)
+				continue
+			else:
+				break
+
 
 		ret=tree.xpath('ret')[0].text
 		if ret!='succ':
@@ -1820,6 +1839,24 @@ class Kaixin(object):
 
 		return True
 
+	def cafe_updateVerify(self,force=True):
+		logging.info("更新cafeverify, force=%s",force)
+
+		if (not force) and self.cafeverify:
+			logging.info("cafeverify已存在，无需更新")
+			return True
+
+		r=self.getResponse('http://www.kaixin001.com/!cafe/index.php')
+		m = re.search('verify=(.+?)&', r[0].decode())
+		if m:
+			logging.info("cafeverify=%s",m.group(1))
+			self.cafeverify = m.group(1)
+		else:
+			logging.info("更新 cafeverify 失败! ")
+			return False
+		return True
+
+
 	def cafe_cooking(self,cafeid,orderid,dishid,task_key=''):
 		'''做菜 cafeid=餐厅id orderid=灶台id dishid=菜名id'''
 		logging.info("%s 尝试在灶台 %s 上做 %s ...",task_key,orderid,dishid)
@@ -1828,24 +1865,33 @@ class Kaixin(object):
 			if not self.signed_in:
 				return False
 
-		for i in range(5):
+		for i in range(9):
 ##			logging.info("第 %d 次 ...",i+1)
 			r = self.getResponse('http://www.kaixin001.com/cafe/api_cooking.php?%s'%
 				(urllib.parse.urlencode(
 				{'verify':self.cafeverify,'cafeid':cafeid,'orderid':orderid,'dishid':dishid,'rand':"%.16f"%(random(),)}),),
 				None)
-			tree=etree.fromstring(r[0])
+			try:
+				tree=etree.fromstring(r[0])
+			except etree.XMLSyntaxError as e:
+				logging.info("tree=etree.fromstring(r[0]) 出错!\n%s",e)
+				continue
 ##			logging.debug("===> %s api_cooking: %s\n",task_key,etree.tostring(tree,encoding='gbk').decode('gbk'))
 			ret=tree.xpath('ret')[0].text
 			if ret!='succ':
 				logging.info("===> %s 灶台 %s 上做菜失败(%s)!\n%s",
 					task_key,orderid,ret,etree.tostring(tree,encoding='gbk').decode('gbk'))
-				return False
+				time.sleep(5)
+				continue
+##				return False
 			try:
 				dish_name=tree.xpath('dish/name')[0].text
 				stage=tree.xpath('dish/stage')[0].text
 			except IndexError:
 				logging.info("%s 解析dish/name 和 dish/stage时失败!\n%s",task_key,etree.tostring(tree,encoding='gbk').decode('gbk'))
+##				if not self.cafe_updateVerify():
+##					return False
+##				continue
 				return False
 			if stage!='1':
 				step_name=tree.xpath('dish/stepname')[0].text
@@ -1898,10 +1944,8 @@ class Kaixin(object):
 
 		ptag=re.compile('(<.*?>)',re.M|re.U|re.S) # 过滤html的tag
 
-		r=self.getResponse('http://www.kaixin001.com/!cafe/index.php')
-		m = re.search('verify=(.+?)&', r[0].decode())
-##		logging.info("verify=%s",m.group(1))
-		self.cafeverify = m.group(1)
+		if not self.cafe_updateVerify():
+			return False
 
 		s=StringIO()
 		pageno=0
