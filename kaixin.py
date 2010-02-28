@@ -156,8 +156,8 @@ class Kaixin(object):
 
 		self.cafeverify='' # 餐厅专用verify
 		self.dish2cook='5' # 自动做的菜
-		self.num4dish2cook=13 # 自动做的菜的数量
 		self.consumepertime=5 # 每次送多少菜给客人
+		self.event4cafe={} # 存放对应消费线程的事件信号
 
 		logging.info("%s 初始化完成.",self.__class__.__name__)
 
@@ -802,6 +802,18 @@ class Kaixin(object):
 			logging.info("删除定时任务 %s",k)
 			v.cancel()
 		self.tasklist.clear()
+
+		for k,v in self.event4cafe.items():
+			logging.info("触发消费 %s 线程退出",k)
+			v['exit'].set()
+			v['consume'].set()
+		scd=1
+		while len(self.event4cafe)!=0:
+			logging.info("等待 %d 秒 ...",scd)
+			time.sleep(scd)
+			scd+=1
+			if scd>6:break
+
 
 		if len(self.statistics)!=0:
 			stat=StringIO()
@@ -1622,7 +1634,7 @@ class Kaixin(object):
 			except IndexError as e:
 				logging.info("解析 orderid/torderid/addevalue/foodnum/evalue时失败！\n%s\n%s",e,etree.tostring(tree,encoding='gbk').decode('gbk'))
 			else:
-				self.cafe_dish2customer(cafeid,torderid,name,self.num4dish2cook,self.consumepertime,task_key)
+				self.event4cafe[torderid]['consume'].set() # 触发消费
 		else:
 			logging.error("===> %s 灶台 %s 端到餐台失败!!! ret=%s (%s)",
 				task_key,orderid,ret,etree.tostring(tree,encoding='gbk').decode('gbk'))
@@ -1652,6 +1664,37 @@ class Kaixin(object):
 		cafewidth=tree.xpath('cafe/cafewidth')[0].text
 		cafeheight=tree.xpath('cafe/cafeheight')[0].text
 		logging.info("餐厅id=%s 魅力=%.1f 面积=%s×%s",cafeid,int(pvalue)/100.0,cafewidth,cafeheight)
+
+		# 餐台
+		logging.info("查看餐台...")
+		dishs=tree.xpath('dish/item')
+		for i,item in enumerate(dishs):
+			orderid=item.xpath('orderid')[0].text
+
+			# 建立对应的消费线程
+			if orderid not in self.event4cafe:
+				self.event4cafe[orderid]=Event()
+				self.event4cafe[orderid]={
+					'consume':Event(),
+					'exit':Event()}
+				Thread(group=None,target=self.cafe_dish2customer,
+						name='consumedish-%s'%(orderid,),
+						args=(cafeid,orderid,self.consumepertime)).start()
+
+			logging.info("%d/%d) 餐台 %s ...",i+1,len(dishs),orderid)
+			try:
+				name=item.xpath('name')[0].text
+				dishid=item.xpath('dishid')[0].text
+				foodnum=item.xpath('foodnum')[0].text
+				num=item.xpath('num')[0].text
+			except IndexError:
+				logging.info("餐台 %s 是空的？",orderid)
+				continue
+			logging.info("餐厅 %s 有 %s/%s %s(%s)",orderid,num,foodnum,name,dishid)
+			if int(num)>self.consumepertime:
+				self.event4cafe[orderid]['consume'].set() # 触发消费
+##			logging.debug("餐台信息: %s\n",etree.tostring(item,encoding='gbk').decode('gbk'))
+
 
 		# 灶台
 		logging.info("查看灶台...")
@@ -1709,8 +1752,8 @@ class Kaixin(object):
 							logging.info("删除相同的任务...")
 							self.tasklist[k].cancel()
 							del self.tasklist[k]
-						logging.info("加入定时执行队列 key=%s %d (%s,%s,%s)",
-							k,timeleft+1,cafeid,orderid,k)
+##						logging.info("加入定时执行队列 key=%s %d (%s,%s,%s)",
+##							k,timeleft+1,cafeid,orderid,k)
 						t=Timer(timeleft+1, self.task_cafe,(cafeid,orderid,k))
 						t.start()
 						self.tasklist[k]=t
@@ -1729,61 +1772,54 @@ class Kaixin(object):
 					logging.debug("灶台 %s 的 %s 做好了, 但解析 foodnum 和 bdiscard 时出错! \n%s",orderid,name,etree.tostring(item,encoding='gbk').decode('gbk'))
 
 
-		# 餐台
-		logging.info("查看餐台...")
-		dishs=tree.xpath('dish/item')
-		for i,item in enumerate(dishs):
-			orderid=item.xpath('orderid')[0].text
-			logging.info("%d/%d) 餐台 %s ...",i+1,len(dishs),orderid)
-			try:
-				name=item.xpath('name')[0].text
-				dishid=item.xpath('dishid')[0].text
-				foodnum=item.xpath('foodnum')[0].text
-				num=item.xpath('num')[0].text
-			except IndexError:
-				logging.info("餐台 %s 是空的？",orderid)
-				continue
-			logging.info("餐厅 %s 有 %s/%s %s(%s)",orderid,num,foodnum,name,dishid)
-##			logging.debug("餐台信息: %s\n",etree.tostring(item,encoding='gbk').decode('gbk'))
-			self.cafe_dish2customer(cafeid,orderid,name,num,self.consumepertime)
-
-	def cafe_dish2customer(self,cafeid,orderid,dishname,num,pernum,task_key=''):
-		logging.info("%s 消费餐台 %s 上的 %s, 总共 %s, 每次 %d ...",
-			task_key,orderid,dishname,num,pernum)
-		numleft=int(num)
-		if pernum>numleft:
-			pernum=numleft
-
-		while numleft:
-			r = self.getResponse('http://www.kaixin001.com/cafe/api_dish2customer.php?%s'%
-				(urllib.parse.urlencode(
-				{'verify':self.cafeverify,'cafeid':cafeid,'orderid':orderid,'num':pernum,'rand':"%.16f"%(random(),)}),),
-				None)
-			tree=etree.fromstring(r[0])
-##			logging.debug("===> api_dish2customer 返回: %s\n",etree.tostring(tree,encoding='gbk').decode('gbk'))
-			ret=tree.xpath('ret')[0].text
-			if ret!='succ':
-				logging.info("%s 消费餐台 %s 的 %s 出错(%s)\n%s",
-					task_key,orderid,dishname,ret,etree.tostring(tree,encoding='gbk').decode('gbk'))
-				return False
-			oid=tree.xpath('orderid')[0].text
-			assert oid==orderid
-			pvalue=tree.xpath('pvalue')[0].text
-			cash=tree.xpath('account/cash')[0].text
-			addcash=tree.xpath('addcash')[0].text
-			foodnum=tree.xpath('foodnum')[0].text
-			leftnum=tree.xpath('leftnum')[0].text
-##			customernum=tree.xpath('customernum')[0].text
-			if int(leftnum)<pernum:
+	def cafe_dish2customer(self,cafeid,orderid,pernum,task_key=''):
+		logging.info("建立 消费 %s 线程",orderid)
+		while True:
+			if self.event4cafe[orderid]['exit'].is_set():
+				logging.info("退出 消费 %s 线程",orderid)
+				del self.event4cafe[orderid]
 				break
-			customernum=tree.xpath('customernum')[0].text
-			logging.info("===> %s 成功消费了餐台 %s 上的 %s, %s->%s, 现金 %s(+%s), 魅力 %.1f, next %d",
-				task_key,orderid,dishname,foodnum,leftnum,cash,addcash,int(pvalue)/100.0,pernum)
+			self.event4cafe[orderid]['consume'].wait()
+			if self.event4cafe[orderid]['exit'].is_set():
+				logging.info("退出 消费 %s 线程",orderid)
+				del self.event4cafe[orderid]
+				break
 
-			time.sleep(3)
+			# 开始消费
+			while True:
+				r = self.getResponse('http://www.kaixin001.com/cafe/api_dish2customer.php?%s'%
+					(urllib.parse.urlencode(
+					{'verify':self.cafeverify,'cafeid':cafeid,'orderid':orderid,'num':pernum,'rand':"%.16f"%(random(),)}),),
+					None)
+				tree=etree.fromstring(r[0])
+##				logging.debug("===> api_dish2customer 返回: %s\n",etree.tostring(tree,encoding='gbk').decode('gbk'))
+				ret=tree.xpath('ret')[0].text
+				if ret!='succ':
+					logging.info("%s 消费餐台 %s 出错(%s)\n%s",
+						task_key,orderid,ret,etree.tostring(tree,encoding='gbk').decode('gbk'))
+					break
+				oid=tree.xpath('orderid')[0].text
+				assert oid==orderid
+				pvalue=tree.xpath('pvalue')[0].text
+				cash=tree.xpath('account/cash')[0].text
+				addcash=tree.xpath('addcash')[0].text
+				foodnum=tree.xpath('foodnum')[0].text
+				leftnum=tree.xpath('leftnum')[0].text
+	##			customernum=tree.xpath('customernum')[0].text
+				customernum=tree.xpath('customernum')[0].text
+				logging.info("===> %s 餐台 %s, %s->%s, 现金 %s(+%s), 魅力 %.1f",
+					task_key,orderid,foodnum,leftnum,cash,addcash,int(pvalue)/100.0)
+
+				if int(leftnum)<pernum:
+##					logging.info("%s 剩余数量<每次最小消费数(%d<%d)",task_key,int(leftnum),pernum)
+					break
+				if self.event4cafe[orderid]['exit'].is_set():
+					break
+				time.sleep(3)
+
+			self.event4cafe[orderid]['consume'].clear()
 
 		return True
-
 
 	def task_cafe(self,cafeid,orderid,task_key):
 		if task_key in self.tasklist:
@@ -1820,7 +1856,7 @@ class Kaixin(object):
 		if stage=='0': # 在做
 			logging.error("%s 灶台 %s 准备下一步(%s)\n%s",task_key,orderid,stage,etree.tostring(tree,encoding='gbk').decode('gbk'))
 			return False
-		if stage=='-1': # 需要清洁
+		elif stage=='-1': # 需要清洁
 			logging.info("%s 灶台 %s 需要清洁(%s)",task_key,orderid,stage)
 			if self.cafe_stoveclean(cafeid,orderid,task_key):
 				self.cafe_cooking(cafeid,orderid,self.dish2cook,task_key)
@@ -2001,6 +2037,8 @@ if __name__=='__main__':
 	import os
 	import copy
 	from threading import Timer
+	from threading import Event
+	from threading import Thread
 	import datetime
 	import socket
 	import sys
