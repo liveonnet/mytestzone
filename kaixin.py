@@ -157,7 +157,7 @@ class Kaixin(object):
 		self.cafeverify='' # 餐厅专用verify
 		self.dish2cook='5' # 自动做的菜
 		self.num4dish2cook=13 # 自动做的菜的数量
-		self.consumepertime=13 # 每次送多少菜给客人
+		self.consumepertime=5 # 每次送多少菜给客人
 
 		logging.info("%s 初始化完成.",self.__class__.__name__)
 
@@ -1666,7 +1666,7 @@ class Kaixin(object):
 				self.cafe_cooking(cafeid,orderid,self.dish2cook)
 				continue
 
-			if stage=='-1': # 需要清洁?
+			if stage=='-1' or stage=='-3': # 需要清洁?
 				# 清洁灶台
 				if self.cafe_stoveclean(cafeid,orderid):
 					self.cafe_cooking(cafeid,orderid,self.dish2cook)
@@ -1774,14 +1774,13 @@ class Kaixin(object):
 			foodnum=tree.xpath('foodnum')[0].text
 			leftnum=tree.xpath('leftnum')[0].text
 ##			customernum=tree.xpath('customernum')[0].text
-			numleft-=pernum
-			if numleft<pernum:
-				pernum=numleft
+			if int(leftnum)<pernum:
+				break
 			customernum=tree.xpath('customernum')[0].text
 			logging.info("===> %s 成功消费了餐台 %s 上的 %s, %s->%s, 现金 %s(+%s), 魅力 %.1f, next %d",
 				task_key,orderid,dishname,foodnum,leftnum,cash,addcash,int(pvalue)/100.0,pernum)
 
-##			time.sleep(0.5)
+			time.sleep(3)
 
 		return True
 
@@ -1881,7 +1880,7 @@ class Kaixin(object):
 			if ret!='succ':
 				logging.info("===> %s 灶台 %s 上做菜失败(%s)!\n%s",
 					task_key,orderid,ret,etree.tostring(tree,encoding='gbk').decode('gbk'))
-				time.sleep(5)
+				time.sleep(30)
 				continue
 ##				return False
 			try:
@@ -1897,7 +1896,7 @@ class Kaixin(object):
 				step_name=tree.xpath('dish/stepname')[0].text
 				tips=tree.xpath('dish/tips/tips')[0].text
 				logging.debug("%s 灶台 %s %s/%s, 下一步: %s",task_key,orderid,step_name,dish_name,tips)
-				time.sleep(0.1)
+				time.sleep(3)
 				continue
 
 ##			logging.debug("%s 灶台 %s 菜名 %s 进入耗时阶段(%s) \n%s",
