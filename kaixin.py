@@ -55,7 +55,7 @@ class Kaixin(object):
 			if not os.path.isabs(self.logdir):
 				self.logdir=os.path.join(self.curdir,self.logdir)
 			self.logfile=os.path.join(self.logdir,'kaixin-%s.log'%(time.strftime('%Y%m%d'),))
-			logging.basicConfig(level=logging.DEBUG,
+			logging.basicConfig(level=logging.INFO,
 		#			format="%(asctime)s %(levelname)s %(funcName)s | %(message)s",
 				  format='%(asctime)s %(thread)d %(levelname)s %(funcName)s %(lineno)d | %(message)s',
 				  datefmt='%H:%M:%S',
@@ -159,6 +159,17 @@ class Kaixin(object):
 		self.consumepertime=5 # 每次送多少菜给客人
 		self.event4cafe={} # 存放对应消费线程的事件信号
 
+		self.exitevent=Event() # 标识退出整个程序的事件信号
+		# 标识监视文件线程退出等待状态的win32信号
+		self.monitorThreadExitEventHandle=win32event.CreateEvent(None,True,False,None)
+
+		try:
+			self.file2monitor=self.cfg.get('account','file2monitor')
+		except configparser.NoOptionError:
+			pass
+		else:
+			_thread.start_new_thread(self.monitorExitFlag,())
+
 		logging.info("%s 初始化完成.",self.__class__.__name__)
 
 	def signin(self):
@@ -226,10 +237,11 @@ class Kaixin(object):
 			self.signin()
 		if self.signed_in:
 			del self.friends4garden[:]
-			r = self.getResponse('http://www.kaixin001.com/app/app.php?aid=1062&url=garden/index.php')
+##			r = self.getResponse('http://www.kaixin001.com/app/app.php?aid=1062&url=garden/index.php')
+			r = self.getResponse('http://www.kaixin001.com/!house/garden/index.php')
 			m = re.search('var g_verify = "(.+)";', r[0].decode())
 			self.verify = m.group(1)
-			#logging.info(u"verify=%s",self.verify)
+			logging.debug("verify=%s",self.verify)
 
 			#req = urllib2.Request(
 				#'http://www.kaixin001.com/!house/!garden/getfriendmature.php',
@@ -295,7 +307,16 @@ class Kaixin(object):
 				(urllib.parse.urlencode(
 				{'verify':self.verify,'fuid':fuid,'r':"%.16f"%(random(),)}),),
 				None)
-			tree = etree.fromstring(r[0])
+			try:
+				tree = etree.fromstring(r[0])
+			except etree.XMLSyntaxError as e:
+				if r[0].decode().find('还没有添加本组件!')!=-1:
+					logging.info("没有添加本组件!")
+					continue
+				else:
+					logging.info("tree = etree.fromstring(r[0]) 出错!\n%s\n%s",e,r[0].decode())
+
+
 
 			items=tree.xpath('garden/item')
 #			logging.debug("total %d farms in this garden",len(items))
@@ -448,16 +469,16 @@ class Kaixin(object):
 		if tosteal==0:
 			return True
 
-		# 将 crops2steal 打乱顺序
-		s=StringIO()
-		pprint(tosteal,s)
-		logging.info("original\n%s",s.getvalue())
-		s.close()
-		tosteal=self.__class__.OutOfOrder(tosteal,1)
-		t=StringIO()
-		pprint(tosteal,t)
-		logging.info("processed\n%s",t.getvalue())
-		t.close()
+##		# 将 crops2steal 打乱顺序
+##		s=StringIO()
+##		pprint(tosteal,s)
+##		logging.info("original\n%s",s.getvalue())
+##		s.close()
+##		tosteal=self.__class__.OutOfOrder(tosteal,1)
+##		t=StringIO()
+##		pprint(tosteal,t)
+##		logging.info("processed\n%s",t.getvalue())
+##		t.close()
 
 		# 看是否有曼陀罗，如果有则放到最后偷
 		foundStramonium=False
@@ -567,6 +588,10 @@ class Kaixin(object):
 
 		cnt=0
 		for fname,fuid in self.friends4ranch:
+			if self.exitevent.isSet():
+				logging.info("检测到退出事件")
+				break
+
 			cnt+=1
 			logging.info(" %02d) 检查 %s(%s)... ",cnt,fname,fuid)
 ##			r = self.getResponse('http://www.kaixin001.com/house/ranch/getconf.php',
@@ -793,9 +818,15 @@ class Kaixin(object):
 				logging.info("\n%s\n%s %d 秒后再次执行(%s) ...  %s\n%s\n",'='*75,'='*15,self.internal,
 					(datetime.datetime.now()+datetime.timedelta(seconds=self.internal)).strftime("%Y-%m-%d %H:%M:%S"),
 					'='*15,'='*75)
-				time.sleep(self.internal)
+				if self.exitevent.wait(self.internal):
+					logging.info("等待中检测到退出信号")
+					win32event.SetEvent(self.monitorThreadExitEventHandle)
+					break
+##				time.sleep(self.internal)
 		except KeyboardInterrupt:
 			logging.info("用户中断执行.")
+			win32event.SetEvent(self.monitorThreadExitEventHandle)
+			self.exitevent.set()
 
 		self.saveCfg()
 		for k,v in self.tasklist.items():
@@ -824,7 +855,8 @@ class Kaixin(object):
 			self.statistics.close()
 
 		logging.info("执行完毕.")
-		time.sleep(1)
+		if __name__=='__main__':
+			time.sleep(1)
 
 	@staticmethod
 	def OutOfOrder(l,n=4):
@@ -1196,20 +1228,20 @@ class Kaixin(object):
 				scd=0.05
 				trycnt=10
 			for i in range(trycnt):
-				if i==trycnt-1:
-##					tmpr = self.getResponse('http://www.kaixin001.com/!house/!ranch//getconf.php',
-##				      {'verify':self.verify,'fuid':i_fuid})
-					tmpr = self.getResponse('http://www.kaixin001.com/!house/!ranch//getconf.php?%s'%
-						(urllib.parse.urlencode(
-						{'verify':self.verify,'fuid':i_fuid,'r':"%.16f"%(random(),),
-						'dragon_shake':'move'}),),
-						None)
-					tmptree = etree.fromstring(tmpr[0])
-					tmpret=tmptree.xpath('ret')[0].text
-					if tmpret!='succ':
-						logging.error("===>%s (debug)重新获取牧场信息失败!!! ret=%s (%s)",task_key,tmpret,etree.tostring(tmptree,encoding='gbk').decode('gbk'))
-					else:
-						logging.info("重新获取牧场信息成功.")
+##				if i==trycnt-1:
+####					tmpr = self.getResponse('http://www.kaixin001.com/!house/!ranch//getconf.php',
+####				      {'verify':self.verify,'fuid':i_fuid})
+##					tmpr = self.getResponse('http://www.kaixin001.com/!house/!ranch//getconf.php?%s'%
+##						(urllib.parse.urlencode(
+##						{'verify':self.verify,'fuid':i_fuid,'r':"%.16f"%(random(),),
+##						'dragon_shake':'move'}),),
+##						None)
+##					tmptree = etree.fromstring(tmpr[0])
+##					tmpret=tmptree.xpath('ret')[0].text
+##					if tmpret!='succ':
+##						logging.error("===>%s (debug)重新获取牧场信息失败!!! ret=%s (%s)",task_key,tmpret,etree.tostring(tmptree,encoding='gbk').decode('gbk'))
+##					else:
+##						logging.info("重新获取牧场信息成功.")
 
 				reslt=self.stealRanchProduct(i_fuid,skey,i_typetext,task_key)
 				if reslt==False:
@@ -1584,7 +1616,7 @@ class Kaixin(object):
 		self.tasklist[task_key]=t
 
 	def cafe_stoveclean(self,cafeid,orderid,task_key=''):
-		logging.info("%s 灶台 %s 需要清洁",task_key,orderid)
+		logging.debug("%s 灶台 %s 需要清洁",task_key,orderid)
 		for i in range(5):
 			# 清洗灶台
 			r = self.getResponse('http://www.kaixin001.com/cafe/api_stoveclean.php?%s'%
@@ -1612,7 +1644,7 @@ class Kaixin(object):
 		return False
 
 	def cafe_dish2counter(self,cafeid,orderid,name,task_key=''):
-		logging.info("%s 将 灶台 %s 的 %s 端到餐台...",task_key,orderid,name)
+		logging.debug("%s 将 灶台 %s 的 %s 端到餐台...",task_key,orderid,name)
 		# 端到餐台
 		r = self.getResponse('http://www.kaixin001.com/cafe/api_dish2counter.php?%s'%
 	    (urllib.parse.urlencode(
@@ -1649,11 +1681,18 @@ class Kaixin(object):
 			if not self.signed_in:
 				return False
 
+		if not self.cafe_updateVerify(False):
+			return False
+
 		r = self.getResponse('http://www.kaixin001.com/cafe/api_getconf.php?%s'%
 			(urllib.parse.urlencode(
 			{'verify':self.cafeverify,'rand':"%.16f"%(random(),),'loading':1}),),
 			None)
-		tree=etree.fromstring(r[0])
+		try:
+			tree=etree.fromstring(r[0])
+		except etree.XMLSyntaxError as e:
+			logging.info("tree = etree.fromstring(r[0]) 出错!\n%s\n%s",e,r[0].decode())
+			return False
 
 		cash=tree.xpath('account/cash')[0].text
 		goldnum=tree.xpath('account/goldnum')[0].text
@@ -1840,6 +1879,7 @@ class Kaixin(object):
 				tree = etree.fromstring(r[0])
 			except etree.XMLSyntaxError as e:
 				logging.info("tree=etree.fromstring(r[0]) 出错!\n%s",e)
+				self.cafe_updateVerify()
 				continue
 			else:
 				break
@@ -1875,7 +1915,7 @@ class Kaixin(object):
 		return True
 
 	def cafe_updateVerify(self,force=True):
-		logging.info("更新cafeverify, force=%s",force)
+		logging.debug("更新cafeverify, force=%s",force)
 
 		if (not force) and self.cafeverify:
 			logging.info("cafeverify已存在，无需更新")
@@ -1887,20 +1927,23 @@ class Kaixin(object):
 			logging.info("cafeverify=%s",m.group(1))
 			self.cafeverify = m.group(1)
 		else:
-			logging.info("更新 cafeverify 失败! ")
+			logging.info("更新 cafeverify 失败! \n%s",r[0].decode())
 			return False
 		return True
 
 
 	def cafe_cooking(self,cafeid,orderid,dishid,task_key=''):
 		'''做菜 cafeid=餐厅id orderid=灶台id dishid=菜名id'''
-		logging.info("%s 尝试在灶台 %s 上做 %s ...",task_key,orderid,dishid)
+		logging.debug("%s 尝试在灶台 %s 上做 %s ...",task_key,orderid,dishid)
 		if not self.signed_in:
 			self.signin()
 			if not self.signed_in:
 				return False
 
 		for i in range(9):
+			if self.exitevent.is_set():
+				logging.info("检测到退出事件")
+				return False
 ##			logging.info("第 %d 次 ...",i+1)
 			r = self.getResponse('http://www.kaixin001.com/cafe/api_cooking.php?%s'%
 				(urllib.parse.urlencode(
@@ -1963,6 +2006,10 @@ class Kaixin(object):
 						task_key,k,timeleft+1,cafeid,orderid,k)
 					t=Timer(timeleft+1, self.task_cafe,(cafeid,orderid,k))
 					t.start()
+					if self.exitevent.is_set():
+						logging.info("检测到退出信号，放弃添加线程任务")
+						t.cancel()
+						return False
 					self.tasklist[k]=t
 			except IndexError:
 				logging.info("%s 不包含 auto/item 信息或者解析失败! ",task_key)
@@ -2022,30 +2069,91 @@ class Kaixin(object):
 
 		s.close()
 
+	def monitorExitFlag(self):
+		''' 监视某文件的存在
+		'''
+		if self.file2monitor==None:
+			return
 
+		logging.info("监控线程开始, 监视文件 %s 的最后修改时间, 以其改变做为退出信号.",self.file2monitor)
+		dirname=os.path.dirname(self.file2monitor)
+		FILE_NOTIFY_CHANGE_LAST_WRITE=0x00000010
+		handle=win32api.FindFirstChangeNotification(dirname,False,FILE_NOTIFY_CHANGE_LAST_WRITE)
+		try:
+			statinfo=os.stat(self.file2monitor)
+		except WindowsError:
+			old_time,new_time=None,None
+		else:
+			old_time=new_time=statinfo.st_mtime
+		handlelist=[handle,self.monitorThreadExitEventHandle]
+		while True:
+			reslt=win32event.WaitForMultipleObjects(handlelist,False,win32event.INFINITE)
+##			logging.info("WaitForMultipleObjects reslt=%d",reslt)
+			if reslt >=win32event.WAIT_ABANDONED_0  and reslt<=(win32event.WAIT_ABANDONED_0 + 1):
+				logging.info("WaitForMultipleObjects abandoned %d",reslt-win32event.WAIT_ABANDONED_0)
+			elif reslt>=win32event.WAIT_OBJECT_0 and reslt<=(win32event.WAIT_OBJECT_0+1):
+				eventidx=reslt-win32event.WAIT_OBJECT_0
+				if eventidx==0:
+					try:
+						statinfo=os.stat(self.file2monitor)
+					except WindowsError:
+						pass
+					else:
+						new_time=statinfo.st_mtime
+						if new_time!=old_time:
+							old_time=new_time
+							logging.info("文件 %s 最后修改时间改变: %s,大小 %d",
+								self.file2monitor,
+								time.strftime('%Y%m%d %H:%M:%S',time.localtime(statinfo.st_mtime)),
+								statinfo.st_size)
+							self.exitevent.set()
+							break
+##						else:
+##							pass
+##							logging.info("文件 %s 未改变!",self.file2monitor)
+
+					win32api.FindNextChangeNotification(handle)
+				elif eventidx==1:
+					logging.info("检测到监控线程退出信号! 监控线程退出 ...")
+					break
+			elif reslt==win32event.WAIT_TIMEOUT:
+				logging.info("WaitForMultipleObjects 超时!") # should never goes here!
+			elif reslt==WAIT_FAILED:
+				logging.info("调用 WaitForMultipleObjects 失败! 错误代码 %d",win32api.GetLastError())
+				break
+			else:
+				logging.info("WaitForMultipleObjects 返回未知值 %d!",reslt)
+
+		win32api.FindCloseChangeNotification(handle)
+		logging.info("监控线程退出.")
+
+
+
+import logging
+from lxml import etree
+import re, time#, webbrowser
+from pprint import pprint
+from io import StringIO
+from random import uniform, random
+import urllib, urllib.request, urllib.error, urllib.parse, http.cookiejar, json
+import configparser
+import codecs
+import os
+import copy
+from threading import Timer
+from threading import Event
+from threading import Thread
+import _thread
+import datetime
+import socket
+import sys
+import shelve
+import imp
+from html.entities import name2codepoint
+import win32api
+import win32event
 
 if __name__=='__main__':
-	import logging
-	from lxml import etree
-	import re, time#, thread, webbrowser
-	from pprint import pprint
-	from io import StringIO
-	from random import uniform, random
-	import urllib, urllib.request, urllib.error, urllib.parse, http.cookiejar, json
-	import configparser
-	import codecs
-	import os
-	import copy
-	from threading import Timer
-	from threading import Event
-	from threading import Thread
-	import datetime
-	import socket
-	import sys
-	import shelve
-	import imp
-	from html.entities import name2codepoint
-
 	i=Kaixin(r'd:\kaixin.ini')
 ##	i.getFishinfo()
 	i.run()
