@@ -1469,7 +1469,9 @@ def level_31():
 #    终于将32*32个点都确定，最终得到画着蟒蛇的图；
 # 4）最初的程序需要执行近22秒，经过优化后，单独执行大概需要近2秒，基本满意。后来从攻略中看到了
 #    通过递归生成每行每列可能排列的函数（genv()），稍微修改就拿来用了，比genlist()要快0.5秒。
-#    现在的程序算这个32*32的蟒蛇图需要约1.5秒。
+#    现在的程序算这个32*32的蟒蛇图需要约1.5秒(test3())。
+# 5）考虑到应该尽早的以行/列新确定的点为过滤条件减少对应列/行的可能排列，这样可以减少迭代次数，并且减少函数调用
+#    将主要逻辑放在一起，经测试32*32需要约1.3秒(test4())
 # 根据蟒蛇图 ==>  http://www.pythonchallenge.com/pc/rock/python.html
 # ps: 值得注意是网页也给出了解出的蟒蛇图js代码（http://www.pythonchallenge.com/pc/rock/python.js）
 # 网页提示：
@@ -1613,13 +1615,80 @@ def level_32():
 		print	'\n'.join([''.join(j)  for j in resovled])
 		print '%s done! %s'%('='*30,'='*30)
 
+	def test4(width,height):
+		UNKNOWN,FILL,EMPTY='?','1',' '
+		resovled=[[UNKNOWN for _ in xrange(width)] for _ in xrange(height)]
+
+		totalnumber=width*height
+		print totalnumber
+
+		def genv(v,l,marks):
+			r=[]
+			j=0
+			if v:
+				if len(v)==1:
+					j=1
+				for i in range(l+2-len(v)-sum(v)):
+					ri=marks[1]*i+marks[0]*v[0]+marks[1]*(1-j)
+					if j:
+						rr=[marks[1]*(l-len(ri))]
+					else:
+						rr=genv(v[1:],l-len(ri),marks)
+					r+=[ri+vv for vv in rr]
+				return r
+			else:
+				return [marks[1]*l]
+
+		def checksingle(idx,l):
+			'''检查l中所有item的第idx项是否一致，不一致则返回None，否则返回这项的值'''
+			for item in l:
+				if item[idx]!=l[0][idx]:
+					return None
+			return l[0][idx]
+
+		Hlist=[genv(a,width,(FILL,EMPTY)) for a in Horizontal]
+		Vlist=[genv(a,height,(FILL,EMPTY)) for a in Vertical]
+		print 'all possible row/col generated.'
+
+
+		resovlednumber=0
+		itercnt=1
+		while resovlednumber!=totalnumber:
+			print '\nitercnt=%d'%(itercnt,)
+			for i,rows in enumerate(Hlist):
+				for j in range(width):
+					if resovled[i][j]==UNKNOWN:
+						t=checksingle(j,rows)
+						if t:
+							resovled[i][j]=t
+							Vlist[j]=[item for item in Vlist[j] if item[i]==t] # 马上用确定的点来减少Vlist对应列的可能数量
+							resovlednumber+=1
+			for i,cols in enumerate(Vlist):
+				for j in range(height):
+					if resovled[j][i]==UNKNOWN:
+						t= checksingle(j,cols)
+						if t:
+							resovled[j][i]=t
+							Hlist[j]=[item for item in Hlist[j] if item[i]==t] # 马上用确定的点来减少Hlist对应行的可能数量
+							resovlednumber+=1
+
+			print 'H after: ',
+			print ','.join([str(len(x)) for x in Hlist])
+			print 'V after: ',
+			print ','.join([str(len(x)) for x in Vlist])
+			itercnt+=1
+
+		print	'\n'.join([''.join(j)  for j in resovled])
+		print '%s done! %s'%('='*30,'='*30)
+
+
 	Horizontal=((2,1,2),(1,3,1),(5,),(7,),(9,),(3,),(2,3,2),(2,3,2),(2,3,2))
 	Vertical=((2,1,3),(1,2,3),(3,),(8,),(9,),(8,),(3,),(1,2,3),(2,1,3))
-	test3(9,9)
+	test4(9,9)
 
 	Horizontal=((3,2),(8,),(10,),(3,1,1),(5,2,1),(5,2,1),(4,1,1),(15,),(19,),(6,14),(6,1,12),(6,1,10),(7,2,1,8),(6,1,1,2,1,1,1,1),(5,1,4,1),(5,4,1,4,1,1,1),(5,1,1,8),(5,2,1,8),(6,1,2,1,3),(6,3,2,1),(6,1,5),(1,6,3),(2,7,2),(3,3,10,4),(9,12,1),(22,1),(21,4),(1,17,1),(2,8,5,1),(2,2,4),(5,2,1,1),(5,))
 	Vertical=((5,),(5,),(5,),(3,1),(3,1),(5,),(5,),(6,),(5,6),(9,5),(11,5,1),(13,6,1),(14,6,1),(7,12,1),(6,1,11,1),(3,1,1,1,9,1),(3,4,10),(8,1,1,2,8,1),(10,1,1,1,7,1),(10,4,1,1,7,1),(3,2,5,2,1,2,6,2),(3,2,4,2,1,1,4,1),(2,6,3,1,1,1,1,1),(12,3,1,2,1,1,1),(3,2,7,3,1,2,1,2),(2,6,3,1,1,1,1),(12,3,1,5),(6,3,1),(6,4,1),(5,4),(4,1,1),(5,))
-	test3(32,32)
+	test4(32,32)
 
 # http://www.pythonchallenge.com/pc/rock/beer.html
 # 第33关
@@ -1719,4 +1788,4 @@ if __name__=="__main__":
 	import keyword
 	from cStringIO import StringIO
 	from time import clock
-	level_33()
+	level_32()
