@@ -62,10 +62,11 @@ class Kaixin(object):
 				  filename=self.logfile,
 				  filemode='a')
 			# loggin to console
-			console=logging.StreamHandler()
-			console.setLevel(logging.INFO)
-			console.setFormatter(logging.Formatter('%(thread)d %(message)s'))
-			logging.getLogger('').addHandler(console)
+			if __name__=='__main__':
+				console=logging.StreamHandler()
+				console.setLevel(logging.INFO)
+				console.setFormatter(logging.Formatter('%(thread)d %(message)s'))
+				logging.getLogger('').addHandler(console)
 			logging.info("log file: %s",self.logfile)
 		else: # 为空则认为是log不写入文件，只输出到stdout
 			logging.basicConfig(level=logging.INFO,
@@ -168,6 +169,7 @@ class Kaixin(object):
 		except configparser.NoOptionError:
 			pass
 		else:
+			# 创建监控线程
 			_thread.start_new_thread(self.monitorExitFlag,())
 
 		logging.info("%s 初始化完成.",self.__class__.__name__)
@@ -1618,6 +1620,9 @@ class Kaixin(object):
 	def cafe_stoveclean(self,cafeid,orderid,task_key=''):
 		logging.debug("%s 灶台 %s 需要清洁",task_key,orderid)
 		for i in range(5):
+			if self.exitevent.isSet():
+				logging.info("检测到退出事件")
+				break
 			# 清洗灶台
 			r = self.getResponse('http://www.kaixin001.com/cafe/api_stoveclean.php?%s'%
 				(urllib.parse.urlencode(
@@ -1868,49 +1873,56 @@ class Kaixin(object):
 ##			self.signin()
 ##			if not self.signed_in:
 ##				return False
-		logging.info("%s 检查灶台 %s ... ",task_key,orderid)
+		while True:
+			logging.info("%s 检查灶台 %s ... ",task_key,orderid)
 
-		for trycnt in range(3):
-			r = self.getResponse('http://www.kaixin001.com/cafe/api_checkfood.php?%s'%
-				(urllib.parse.urlencode(
-				{'verify':self.cafeverify,'cafeid':cafeid,'orderid':orderid,'rand':"%.16f"%(random(),)}),),
-				None)
-			try:
-				tree = etree.fromstring(r[0])
-			except etree.XMLSyntaxError as e:
-				logging.info("tree=etree.fromstring(r[0]) 出错!\n%s",e)
-				self.cafe_updateVerify()
-				continue
-			else:
-				break
+			for trycnt in range(3):
+				r = self.getResponse('http://www.kaixin001.com/cafe/api_checkfood.php?%s'%
+					(urllib.parse.urlencode(
+					{'verify':self.cafeverify,'cafeid':cafeid,'orderid':orderid,'rand':"%.16f"%(random(),)}),),
+					None)
+				try:
+					tree = etree.fromstring(r[0])
+				except etree.XMLSyntaxError as e:
+					logging.info("tree=etree.fromstring(r[0]) 出错!\n%s",e)
+					self.cafe_updateVerify()
+					continue
+				else:
+					break
 
 
-		ret=tree.xpath('ret')[0].text
-		if ret!='succ':
-			logging.error("===> %s 获取灶台 %s 信息失败!!! ret=%s (%s)",
-				task_key,orderid,ret,etree.tostring(tree,encoding='gbk').decode('gbk'))
-			return False
-		stage=tree.xpath('stage')[0].text
-		oid=tree.xpath('orderid')[0].text
-		assert orderid==oid
-		if stage=='0': # 在做
-			logging.error("%s 灶台 %s 准备下一步(%s)\n%s",task_key,orderid,stage,etree.tostring(tree,encoding='gbk').decode('gbk'))
-			return False
-		elif stage=='-1': # 需要清洁
-			logging.info("%s 灶台 %s 需要清洁(%s)",task_key,orderid,stage)
-			if self.cafe_stoveclean(cafeid,orderid,task_key):
-				self.cafe_cooking(cafeid,orderid,self.dish2cook,task_key)
-		elif stage=='1': # 耗时操作中
-			logging.info("%s 灶台 %s 还在做(%s)",task_key,orderid,stage)
-		elif stage=='2': # 做好了
-			logging.info("%s 灶台 %s 做好了(%s)",task_key,orderid,stage)
-##			logging.info("%s 灶台 %s 做好了(%s) %s",task_key,orderid,stage,etree.tostring(tree,encoding='gbk').decode('gbk'))
-			if self.cafe_dish2counter(cafeid,orderid,'xxxx',task_key):
+			ret=tree.xpath('ret')[0].text
+			if ret!='succ':
+				logging.error("===> %s 获取灶台 %s 信息失败!!! ret=%s (%s)",
+					task_key,orderid,ret,etree.tostring(tree,encoding='gbk').decode('gbk'))
+				return False
+			stage=tree.xpath('stage')[0].text
+			oid=tree.xpath('orderid')[0].text
+			assert orderid==oid
+			if stage=='0': # 在做
+				logging.error("%s 灶台 %s 准备下一步(%s)\n%s",task_key,orderid,stage,etree.tostring(tree,encoding='gbk').decode('gbk'))
+				return False
+			elif stage=='-1': # 需要清洁
+				logging.info("%s 灶台 %s 需要清洁(%s)",task_key,orderid,stage)
 				if self.cafe_stoveclean(cafeid,orderid,task_key):
 					self.cafe_cooking(cafeid,orderid,self.dish2cook,task_key)
-		else:
-			logging.error("===>%s 灶台 %s 的状态未知(%s)!!! ret=%s (%s)",task_key,orderid,stage,ret,etree.tostring(tree,encoding='gbk').decode('gbk'))
-			return False
+			elif stage=='1': # 耗时操作中
+				logging.info("%s 灶台 %s 还在做(%s)",task_key,orderid,stage)
+				if self.exitevent.wait(10):	# 退出信号有效
+					logging.info("检测到退出信号")
+				else: # timeout
+					continue
+			elif stage=='2': # 做好了
+				logging.info("%s 灶台 %s 做好了(%s)",task_key,orderid,stage)
+	##			logging.info("%s 灶台 %s 做好了(%s) %s",task_key,orderid,stage,etree.tostring(tree,encoding='gbk').decode('gbk'))
+				if self.cafe_dish2counter(cafeid,orderid,'xxxx',task_key):
+					if self.cafe_stoveclean(cafeid,orderid,task_key):
+						self.cafe_cooking(cafeid,orderid,self.dish2cook,task_key)
+			else:
+				logging.error("===>%s 灶台 %s 的状态未知(%s)!!! ret=%s (%s)",task_key,orderid,stage,ret,etree.tostring(tree,encoding='gbk').decode('gbk'))
+				return False
+
+			break
 
 		return True
 
