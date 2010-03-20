@@ -30,26 +30,29 @@ def level_01():
 
 # http://www.pythonchallenge.com/pc/def/ocr.html
 # 第2关
-# 寻找mess里面出现次数最少的字符（好像也可以理解为出现在mess里面的字母）
+# find rare characters in the mess below:
+# 寻找mess里出现的少量字母
 def level_02():
 	p=re.compile(r'<!--(.*?)-->',re.M|re.S)
+	pchar=re.compile(r'[a-z]+')
 	r=urllib2.urlopen('http://www.pythonchallenge.com/pc/def/ocr.html')
 	if r:
 		data=r.read()
 		m=p.findall(data)
 		for i in m:
 			if len(i)<1000: continue # 跳过提示 find rare characters in the mess below:
-			d={}
-			s=i.replace('\n','')
-			for c in s:
-				d[c]=d.get(c,0)+1
-			#x=list([(j,i) for i,j in d.items()])
-			#x.sort()
-			#print x
-			avgOC = len(s) // len(d)
-			print avgOC
-			print ''.join([c for c in s if d[c] < avgOC]) # 输出 equality, 去 http://www.pythonchallenge.com/pc/def/equality.html
-			break
+			print ''.join(pchar.findall(i))
+#			d={}
+#			s=i.replace('\n','')
+#			for c in s:
+#				d[c]=d.get(c,0)+1
+#			#x=list([(j,i) for i,j in d.items()])
+#			#x.sort()
+#			#print x
+#			avgOC = len(s) // len(d)
+#			print avgOC
+#			print ''.join([c for c in s if d[c] < avgOC]) # 输出 equality, 去 http://www.pythonchallenge.com/pc/def/equality.html
+#			break
 
 
 # http://www.pythonchallenge.com/pc/def/equality.html
@@ -63,14 +66,22 @@ def level_03():
 	if m:
 		p=re.compile(r'[a-z]+[A-Z]{3}([a-z])[A-Z]{3}[a-z]+',re.M)
 		result=''.join(p.findall(m.group(1)))
-		print result # 输出 linkedlist, 去 http://www.pythonchallenge.com/pc/def/linkedlist.html ==》 http://www.pythonchallenge.com/pc/def/linkedlist.php
+		print result # 输出 linkedlist, ==> http://www.pythonchallenge.com/pc/def/linkedlist.php
+
 
 # http://www.pythonchallenge.com/pc/def/linkedlist.php
 # 第4关
-# 顺着链接找
-# 先找到peak.html ==> http://www.pythonchallenge.com/pc/def/peak.html
+# 提示：
+#　<!-- urllib may help. DON'T TRY ALL NOTHINGS, since it will never
+# end. 400 times is more than enough. -->
+# 从12345开始顺着链接找
+# 到了 http://www.pythonchallenge.com/pc/def/linkedlist.php?nothing=92118 后有提示：
+# Yes. Divide by two and keep going.
+#
+# 所以继续从46059开始
+# 最后到peak.html ==> http://www.pythonchallenge.com/pc/def/peak.html
 def level_04():
-	url='http://www.pythonchallenge.com/pc/def/linkedlist.php?nothing=33110'
+	url='http://www.pythonchallenge.com/pc/def/linkedlist.php?nothing=12345'
 	opener=urllib2.build_opener(urllib2.HTTPCookieProcessor(cookielib.CookieJar()))
 	opener.addheaders = [('User-Agent', 'Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.9.1.3) Gecko/20090824 Firefox/3.5.3')]
 	urllib2.install_opener(opener)
@@ -95,8 +106,7 @@ def level_04():
 # 下载 http://www.pythonchallenge.com/pc/def/banner.p
 # 查看里面是个list，每个列表中的元素又是一个包含若干tuple的list，所有list中第二个数字之和
 #  总为95，第一个要么是空格要么是井号，猜想是由95个字符为一行的多行字符组成的图形
-# 打出来一看，写着channel
-# 去 http://www.pythonchallenge.com/pc/def/channel.html
+# 打出来一看，写着channel  ==> http://www.pythonchallenge.com/pc/def/channel.html
 def level_05():
 	p=pickle.load(open(ur'd:\banner.p'))
 	fo=open(ur'd:\banner.txt','w')
@@ -111,16 +121,15 @@ def level_05():
 # 去 http://www.pythonchallenge.com/pc/def/zip.html
 # yes. find the zip.
 # 猜想 http://www.pythonchallenge.com/pc/def/channel.zip
-# 打开里面有910文件，readme里面写着
+# 打开里面有910个文件，readme里面写着
 # welcome to my zipped list.
 #
-#hint1: start from 90052
-#hint2: answer is inside the zip
+# hint1: start from 90052
+# hint2: answer is inside the zip
 # 类似第4关的顺着找，文件里面包含要找的下个文件的编号
-# 最终提取的comment组成了字符图形HOCKEY ==》 http://www.pythonchallenge.com/pc/def/hockey.html
+# 最终提取的comment组成了字符图形HOCKEY ==> http://www.pythonchallenge.com/pc/def/hockey.html
 # 提示  it's in the air. look at the letters.
-# 仔细一看 组成HOCKEY的字母是oxygen
-# 去 http://www.pythonchallenge.com/pc/def/oxygen.html
+# 仔细一看 组成HOCKEY的字母是oxygen ==> http://www.pythonchallenge.com/pc/def/oxygen.html
 def level_06():
 	f=zipfile.ZipFile(ur'd:\channel.zip')
 	n='90052.txt'
@@ -151,11 +160,11 @@ def level_07():
 		c.append(f.getpixel((i,46))[0])
 	print ''.join([chr(x) for x in c]) # 输出 smart guy, you made it. the next level is [105, 110, 116, 101, 103, 114, 105, 116, 121]jld
 
-	print ''.join([chr(x) for x in [105, 110, 116, 101, 103, 114, 105, 116, 121]]) # 输出 integrity ，去 http://www.pythonchallenge.com/pc/def/integrity.html
+	print ''.join([chr(x) for x in [105, 110, 116, 101, 103, 114, 105, 116, 121]]) # 输出 integrity  ==> http://www.pythonchallenge.com/pc/def/integrity.html
 
 # http://www.pythonchallenge.com/pc/def/integrity.html
 # 第8关
-# 蜜蜂采花图
+# 蜜蜂采花图，点击之，提示需要用户名和密码
 # Where is the missing link?
 # bee? ==> http://www.pythonchallenge.com/pc/def/bee.html
 # and she is BUSY. ==> http://www.pythonchallenge.com/pc/def/busy.html
@@ -169,12 +178,12 @@ def level_08():
 	un='BZh91AY&SYA\xaf\x82\r\x00\x00\x01\x01\x80\x02\xc0\x02\x00 \x00!\x9ah3M\x07<]\xc9\x14\xe1BA\x06\xbe\x084'
 	pw='BZh91AY&SY\x94$|\x0e\x00\x00\x00\x81\x00\x03$ \x00!\x9ah3M\x13<]\xc9\x14\xe1BBP\x91\xf08'
 	print bz2.decompress(un) # 输出 huge
-	print bz2.decompress(pw) # 输出 file 点击图片的热点链接，输入用户名 huge和密码file，到 http://www.pythonchallenge.com/pc/return/good.html
+	print bz2.decompress(pw) # 输出 file 点击图片的热点链接，输入用户名 huge和密码file  ==> http://www.pythonchallenge.com/pc/return/good.html
 
 
 # http://www.pythonchallenge.com/pc/return/good.html
 # 第9关
-# 标题是 connect th dots
+# 标题是 connect the dots
 # 图中一堆黑点，网页注释中first和second是一堆数字, first+second=?
 # 看来要在图中画点
 def level_09():
@@ -225,8 +234,8 @@ def level_09():
 # 点击图片 ==> http://www.pythonchallenge.com/pc/return/sequence.txt
 # a = [1, 11, 21, 1211, 111221,
 # 找规律
-# shit想了半天思路就没对上，看攻略原来是这样
-#  1是1个1，写作1
+# shit想了半天思路就没对上，看攻略原来是这样：
+#  1是1个1，写作11
 #  11是2个1，写作21
 #  21是1个2，1个1，写作1211
 #  1211是1个1，1个2，2个1，写作111221
@@ -244,6 +253,7 @@ def level_10():
 
 	print 'result=%d'%(len(a[30]),) # 输出 5808 ==> http://www.pythonchallenge.com/pc/return/5808.html
 
+	# 另一解法：
 	# 可以优化为4行
 	# 与以前相比，不用保存以前的值 少一个匹配组 不用每次都判断长度
 	# 还是老外的解法牛逼！
@@ -290,7 +300,7 @@ def level_11():
 # 不得不说好变态，原来是http://www.pythonchallenge.com/pc/return/evil1.jpg暗示你要分成5堆
 # 下面就把那个gfx文件按分牌方式分成五部分分别写入5个文件
 # 然后把5个文件改名为gif，得到dis pro port ional ity,最后的ity被划去，所以结果为 disproportional
-# 去 http://www.pythonchallenge.com/pc/return/disproportional.html
+# ==> http://www.pythonchallenge.com/pc/return/disproportional.html
 def level_12():
 	f=open(ur'd:\evil2.gfx','rb') # 注意要二进制方式打开
 	data=f.read()
@@ -323,9 +333,9 @@ def level_13():
 # walk round
 # 网页注释里面提示： <!-- remember: 100*100 = (100+99+99+98) + (...  -->
 # 蛋糕图像下面的像条形码的图片 wire.png 拖出来一看竟然是个 10000*1 的图片
-# 看来处理图片了 提示100*100大概是目标大小？那个螺旋状蛋糕是啥意思？
+# 看来是需要处理图片了 提示100*100大概是目标大小？那个螺旋状蛋糕是啥意思？
 def level_14():
-	# 先吧wire.png的像素码成100*100
+	# 先把wire.png的像素码成100*100
 ##	my=PIL.Image.new('RGB',(100,100))
 ##	f=PngImagePlugin.PngImageFile(ur'd:\wire.png')
 ##	for y in xrange(100):
@@ -384,8 +394,6 @@ def level_14():
 # 网页注释中提示
 # <!-- he ain't the youngest, he is the second -->
 # <!-- todo: buy flowers for tomorrow -->
-
-
 def level_15():
 	some=[]
 	for i in range(10):
@@ -867,7 +875,7 @@ def level_23():
 # 开始试着以白色为道路非白色为墙壁，用以前写过的A*算法找路径，结果没有路。
 # 又仔细放大图片查看边缘，原来右上角和左下角各有一个黑色像素
 # 这么说就是就是以白色为墙壁非白色为道路了，再次找路，找到。
-# 又没有头绪了，开始也许通路能组成图形字符，结果啥也看不出来。
+# 又没有头绪了，开始猜想也许通路能组成图形字符，结果啥也看不出来。
 # 参考攻略，原来是依次将路径间隔着取所在的像素的r值，存入文件中。
 # 存成的文件是个zip，打开，里面有两个文件maze.jpg和mybroken.zip，其中maze.jpg
 # 打开是个图片，上面有lake字样  ==>  http://www.pythonchallenge.com/pc/hex/lake.html
@@ -1788,4 +1796,4 @@ if __name__=="__main__":
 	import keyword
 	from cStringIO import StringIO
 	from time import clock
-	level_32()
+	level_33()
