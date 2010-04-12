@@ -1762,7 +1762,7 @@ class Kaixin(object):
 				if self.cfgData['bDoCooking']:
 					logging.info("查看灶台...")
 					cookings=tree.xpath('cooking/item')
-					waittime=5
+					waittime=0
 					for i,item in enumerate(cookings):
 						orderid=item.xpath('orderid')[0].text
 						logging.info("%d/%d) 灶台 %s ...",i+1,len(cookings),orderid)
@@ -1770,12 +1770,36 @@ class Kaixin(object):
 							stage=item.xpath('stage')[0].text
 						except IndexError:
 							logging.info("灶台 %s 是空的",orderid)
+						else:
+							if stage=='1':
+								autotime=item.xpath('autotime')[0].text
+								timeleft=-int(autotime)
+								strCur=''
+								try:
+									dish_name=item.xpath('name')[0].text
+									dishid=item.xpath('dishid')[0].text
+									progress=item.xpath('auto/item')
+									for ele in progress:
+										a_htime=ele.xpath('htime')[0].text
+										timeleft+=int(a_htime)
+										if timeleft>0 and strCur=='':
+											a_stage=ele.xpath('stage')[0].text
+											a_step=ele.xpath('step')[0].text
+											a_name=ele.xpath('name')[0].text
+											strCur="当前: %s.%s: %s(%ss)"%(a_stage,a_step,a_name,a_htime)
+									logging.debug("灶台 %s 在做 %s(%s), %s 剩余时间%ds",orderid,dish_name,dishid,strCur,timeleft)
+									waittime=int(timeleft)
+								except IndexError:
+									logging.info("获取灶台 %s 的等待时间时出错! ",orderid)
+
+
 						k='cafe-%02d-%s'%(i+1,orderid)
 						if k not in self.tasklist:
+							logging.info("灶台线程 %s %d 秒后执行",k,waittime)
 							self.tasklist[k]=Timer(waittime, self.task_cafe,(cafeid,orderid,'cafe-%02d'%(i+1,)))
 							self.tasklist[k].setName('灶台-%02d-%s'%(i+1,orderid))
 							self.tasklist[k].start()
-							waittime+=10
+							waittime=(i+1)*5
 				else:
 					logging.info("根据配置, 不查看灶台不做菜.")
 
@@ -1850,6 +1874,7 @@ class Kaixin(object):
 	def task_cafe(self,cafeid,orderid,task_key):
 		'''
 				-3 需要清洁
+				-2 被收购 需要清洁
 				-1 需要清洁
 				0 在做
 				1 耗时操作中
@@ -1909,7 +1934,7 @@ class Kaixin(object):
 						if ret[0]==True:
 							waittime=ret[1]
 
-					elif stage=='-1' or stage=='-3': # 需要清洁
+					elif stage=='-1' or stage=='-2' or stage=='-3': # 需要清洁
 						logging.debug("%s 灶台 %s 需要清洁(%s)",task_key,orderid,stage)
 						if self.cafe_stoveclean(cafeid,orderid,task_key):
 							ret=self.cafe_cooking(cafeid,orderid,self.cfgData['dish2cook'],task_key)
@@ -1928,7 +1953,8 @@ class Kaixin(object):
 							if ret[0]==True:
 								waittime=ret[1]
 					else:
-						logging.error("===>%s 灶台 %s 的状态未知(%s)!!! ret=%s (%s)",task_key,orderid,stage,ret,etree.tostring(tree,encoding='gbk').decode('gbk'))
+						logging.info("===>%s 灶台 %s 的状态未知(%s)!!! ret=%s (%s)",task_key,orderid,stage,ret,etree.tostring(tree,encoding='gbk').decode('gbk'))
+						waittime=300
 
 
 		return
@@ -1993,7 +2019,7 @@ class Kaixin(object):
 ##					task_key,orderid,ret,etree.tostring(tree,encoding='gbk').decode('gbk'))
 				logging.info("===> %s 上做菜失败(%s)!\n%s",
 					task_key,ret,etree.tostring(tree,encoding='gbk').decode('gbk'))
-				self.exitevent.wait(90)
+				self.exitevent.wait(60)
 				continue
 ##				return False
 			try:
@@ -2021,12 +2047,12 @@ class Kaixin(object):
 			try:
 				autoitems=tree.xpath('dish/auto/item')
 				for item in autoitems:
-					a_stage=item.xpath('stage')[0].text
-					a_step=item.xpath('step')[0].text
-					a_name=item.xpath('name')[0].text
 					a_htime=item.xpath('htime')[0].text
 					timeleft+=int(a_htime)
 					if timeleft>0 and strCur=='':
+						a_stage=item.xpath('stage')[0].text
+						a_step=item.xpath('step')[0].text
+						a_name=item.xpath('name')[0].text
 						strCur="当前: %s.%s: %s(%ss)"%(a_stage,a_step,a_name,a_htime)
 ##					logging.debug("%s 灶台 %s 后续: %s.%s: %s(%ss)",task_key,orderid,a_stage,a_step,a_name,a_htime)
 ##				logging.info("===> %s 灶台 %s 在做 %s(%s), %s 剩余时间%ds",task_key,orderid,dish_name,dishid,strCur,timeleft)
