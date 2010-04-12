@@ -1,5 +1,239 @@
 #!/usr/bin/env python
 #coding=utf-8
+from threading import Thread
+
+def threadpool_wrapfunc(func):
+	def wrappedFunc(*args,**kwargs):
+##		logging.debug("[bfr] %s calling, args=%s, kwargs=%s",func.__name__,args,kwargs)
+		# 将对 Kaixin.getResponse() 的调用转为对ThreadPool4Kaixin.getResponseEx() 的调用
+		return args[0].pool.getResponse(args[0].getResponseEx,*args[1:],**kwargs)
+	return wrappedFunc
+
+
+class Worker(Thread):
+	'''工作线程，配合线程池工作，发送 (-1,None,None,None) 到任务队列可触发接受此任务的
+	线程退出'''
+	def __init__(self,pool,name=''):
+		super().__init__()
+		self.__pool=pool
+		self.daemon=True
+		if name:
+			self.name=name
+		self.start()
+
+	def run(self):
+##		logging.info("isDaemon=%s",self.isDaemon())
+		get=self.__pool.getTask
+		while True:
+			k,func,args,kwargs=get()
+##			k,func,args,kwargs=self.__pool.getTask()
+			if k==-1:
+				logging.info("工作线程 %s 退出",self.name)
+				break
+##			logging.info("工作 %s 获取任务 k=%s func=%s args=%s kwargs=%s",self.name,k,func.__name__,args,kwargs)
+			try:
+				r=func(*args,**kwargs)
+			except Exception as e:
+				logging.info("工作线程 %s 执行func发生异常: k=%s func=%s args=%s kwargs=%s\n%s",self.name,k,func.__name__,args,kwargs,e)
+			finally:
+				self.__pool.putResult(k,r)
+
+class ThreadPool4Kaixin(object):
+	'''简单的限速线程池，不支持动态改变工作线程数量，不支持动态改变限速'''
+	def __init__(self,workernum,speedlimit):
+		'''workernum指定工作线程的数量，speedlimit指定每个任务之间的间隔，=0 则不限速'''
+		self.__workers=[]
+		self.__tasks=Queue(0) # 工作线程访问的任务队列
+		self.__faketasks=Queue(0) # 外部对象发送请求时插入的任务队列
+##		self.__workernum=workernum
+		self.__speedlimit=speedlimit
+
+		self.__taskresult={} # 存放返回的结果
+		self.__lock4result=Lock() # 修改self.__taskresult时需要
+		self.__condition4result=Condition() # 唤醒查看self.__taskresult的线程时需要
+		# 初始化工作线程
+		for i in range(workernum):
+			self.__workers.append(Worker(self,'worker-%02d'%(i+1,)))
+
+		self.thread2controlspeed=None
+		self.exitevent=Event() # 触发速度控制线程退出
+		if speedlimit==0: # 不限速
+			self.__faketasks=self.__tasks
+		else:
+			self.thread2controlspeed=Timer(0,self.limitSpeedThread,()) # 创建速度控制线程
+			self.thread2controlspeed.start()
+##			_thread.start_new_thread(self.limitSpeedThread,()) # 启动速度控制线程
+
+
+	def getTask(self):
+		'''工作线程调用，获取待执行请求'''
+		return self.__tasks.get()
+
+	def putResult(self,k,rslt):
+		'''工作线程调用，放入返回结果rslt'''
+		self.__tasks.task_done() # 与 self.__tasks.get() 匹配
+		# 放入结果
+		with self.__lock4result:
+			self.__taskresult[k]=rslt
+		# 唤醒等待者
+		with self.__condition4result:
+			self.__condition4result.notify_all()
+
+	def getResponse(self,func,*args,**kwargs):
+		'''线程池使用者调用，放入请求并获取相应结果'''
+		# 生成k，以区分出自己的返回数据
+##		k=datetime.datetime.now().strftime('%M%S%f')
+		k="%.16f"%(random(),)
+
+		# 放入请求数据(函数和参数)
+		self.__faketasks.put((k,func,args,kwargs))
+
+		# 等待结果
+		while True:
+			with self.__condition4result:
+				self.__condition4result.wait()
+			if k in self.__taskresult: # 是自己要的数据
+				with self.__lock4result:
+					return self.__taskresult.pop(k)
+
+	def exit(self):
+		'''退出线程池，结束所有工作线程'''
+		if self.thread2controlspeed: # 控制速度线程存在
+			self.exitevent.set()
+			self.thread2controlspeed.join()
+
+		logging.info("等待任务队列被处理完...")
+		self.__tasks.join()
+
+		while len(self.__taskresult)!=0:
+			logging.info("等待 任务结果全被取走...")
+			time.sleep(1)
+
+		logging.info("触发工作线程退出...")
+		for _ in range(len(self.__workers)):
+			self.__tasks.put((-1,None,None,None))
+		for t in self.__workers:
+			t.join()
+
+		logging.info("线程池退出")
+
+	def limitSpeedThread(self):
+		'''控制速度的线程，通过控制请求进入任务队列的速度来控制任务执行频率
+		目前不区分请求的来源'''
+		logging.info("速度控制线程启动")
+		while True:
+			time.sleep(self.__speedlimit)
+			try:
+				x=self.__faketasks.get_nowait()
+				self.__tasks.put(x)
+				logging.debug("控制速度线程 队列长度 %d",self.__faketasks.qsize())
+			except Empty:
+				if self.exitevent.is_set():
+					logging.info("控制速度线程退出")
+					break
+
+class fakeKaixin(object):
+	def __init__(self):
+		self.opener = urllib.request.build_opener()#urllib.request.HTTPCookieProcessor(self.cj))
+		self.opener.addheaders = [('User-Agent', 'Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.9.1.3) Gecko/20090824 Firefox/3.5.3')]
+		urllib.request.install_opener(self.opener)
+
+		logging.basicConfig(level=logging.INFO,
+			format='%(thread)d %(message)s')
+
+		self.semaphore4accessCnt=Semaphore()
+		self.accessCnt=0
+		self.statistics4WebAccessData={} # 具体记录访问不同组件的次数
+
+		self.pool=ThreadPool4Kaixin(10,2)
+
+		self.exitevent=Event()
+
+	def fakestatisticsWebAccess(self,a,b):
+		with self.semaphore4accessCnt:
+			self.accessCnt+=1
+			v=self.statistics4WebAccessData.get(a,0)
+			self.statistics4WebAccessData[a]=v+1
+			v=self.statistics4WebAccessData.get(b,0)
+			self.statistics4WebAccessData[b]=v+1
+
+	def getResponse(self,url,data=None):
+		"""获得请求url的响应"""
+		res,rurl=None,None
+		for i in range(3): # 尝试3次
+			if i!=0:
+				logging.info("第 %d 次尝试...",i+1)
+			try:
+##				logging.debug("访问 %s",url)
+				r = self.opener.open(
+					urllib.request.Request(url,urllib.parse.urlencode(data) if data else None),
+					timeout=30)
+				res=r.read()
+				rurl=r.geturl()
+				self.statisticsWebAccess(url)
+				break
+			except urllib.error.HTTPError as e:
+				logging.exception("请求出错！ %s",e)
+			except urllib.error.URLError as e:
+				logging.exception("访问地址 %s 失败! %s",url,e)
+			except IOError as e:
+				logging.info("IO错误! %s",e)
+			except Exception as e:
+				logging.info("未知错误! %s",e)
+				raise
+
+	def testfunc(self,x,y):
+		self.fakestatisticsWebAccess(x,y)
+		time.sleep(uniform(0,1))
+##		logging.info("x=%s,y=%s",x,y)
+		return (x,y)
+
+	def cafethread(self,name):
+		logging.info("线程 %s 建立",name)
+		while True:
+			if self.exitevent.is_set():
+				logging.info("检测到退出事件")
+				break
+			time.sleep(uniform(0,1))
+			if self.exitevent.is_set():
+				logging.info("检测到退出事件")
+				break
+			a,b=randint(3,9),randint(10,20)
+##			logging.info("线程 %s 请求数据: %d %d",name,a,b)
+			r=self.pool.getResponse(self.testfunc,a,b)
+##			logging.info("线程 %s 获得返回数据: %s",name,r)
+			logging.info("线程 %s 返回: (%d %d) == %s",name,a,b,r)
+			assert (a,b)==r
+		logging.info("线程 %s 退出",name)
+
+	def run(self):
+		for i in range(25):
+			_thread.start_new_thread(self.cafethread,('cafetread-%02d'%(i+1,),))
+		try:
+			while True:
+				logging.info("\n%s\n%s %d 秒后再次执行(%s) ...  %s\n%s\n",'='*75,'='*15,30,
+					(datetime.datetime.now()+datetime.timedelta(seconds=30)).strftime("%Y-%m-%d %H:%M:%S"),
+					'='*15,'='*75)
+				if self.exitevent.wait(30):
+					logging.info("等待中检测到退出信号")
+					break
+
+		except KeyboardInterrupt:
+			logging.info("用户中断执行.")
+			self.exitevent.set()
+
+		logging.info("网络访问次数: %d",self.accessCnt)
+		if len(self.statistics4WebAccessData)!=0:
+			logging.info("访问分类统计:\n%s",'\n'.join( ("%s: %d"%(k,v) for k,v in self.statistics4WebAccessData.items() ) ) )
+
+		self.pool.exit()
+
+
+		logging.info("执行完毕.")
+		if __name__=='__main__':
+			time.sleep(1)
+
+
 
 class Kaixin(object):
 	def __init__(self,inifile='kaixin.ini'):
@@ -140,24 +374,7 @@ class Kaixin(object):
 		self.semaphore4accessCnt=Semaphore()
 		self.statistics4WebAccessData={} # 具体记录访问不同组件的次数
 
-##		self.cafepp={}
-##		self.cafepp['120537468']='24107500'
-##		self.cafepp['482280082']='96456020'
-##		self.cafepp['523358164']='104671640'
-##		self.cafepp['85556305']='17111280'
-##		self.cafepp['53079206']='10615860'
-##		self.cafepp['52605525']='10521120'
-##		self.cafepp['52605521']='10521120'
-##		self.cafepp['52605527']='10521120'
-##		self.cafepp['61617313']='12323480'
-##		self.cafepp['120538155']='24107640'
-##		self.cafepp['320389314']='64077880'
-##		self.cafepp['214092836']='42818580'
-##		self.cafepp['736228756']='147245760'
-##		self.cafepp['614049594']='122809920'
-##		self.cafepp['809349185']='161869840'
-##		self.cafepp['1270279853']='254055980'
-##		self.cafepp['667698380']='133539680'
+		self.pool=ThreadPool4Kaixin(10,2)
 
 		logging.info("%s 初始化完成.",self.__class__.__name__)
 
@@ -490,10 +707,10 @@ class Kaixin(object):
 			rslt=self.stealOneCrop(farmnum,seedid,fuid)
 			if rslt==False: # 被反外挂检测到
 				break
-			if idx!=len(tosteal)-1:
-				sleeptime=uniform(3,7)
-				logging.debug("延迟%f秒以逃避反外挂检测...",sleeptime)
-				time.sleep(sleeptime)
+##			if idx!=len(tosteal)-1:
+##				sleeptime=uniform(3,7)
+##				logging.debug("延迟%f秒以逃避反外挂检测...",sleeptime)
+##				time.sleep(sleeptime)
 
 		return True
 
@@ -845,6 +1062,7 @@ class Kaixin(object):
 			scd+=1
 			if scd>6:break
 
+		self.pool.exit()
 
 		logging.info("网络访问次数: %d",self.accessCnt)
 		if len(self.statistics4WebAccessData)!=0:
@@ -961,7 +1179,7 @@ class Kaixin(object):
 
 			items=tree.xpath('fruit/item')
 			for i in items:
-				time.sleep(1)
+##				time.sleep(1)
 				try:
 					seedid=i.xpath('seedid')[0].text
 					num=i.xpath('num')[0].text
@@ -992,7 +1210,7 @@ class Kaixin(object):
 
 			items=tree.xpath('fruit/item')
 			for i in items:
-				time.sleep(1)
+##				time.sleep(1)
 				try:
 					aid=i.xpath('aid')[0].text
 					num=i.xpath('num')[0].text
@@ -1421,22 +1639,46 @@ class Kaixin(object):
 
 	def statisticsWebAccess(self,url):
 		"""根据url统计访问数据"""
-		idx=url.find('http://www.kaixin001.com/')
-		if idx!=-1:
-			k=url.replace('http://www.kaixin001.com/','')
-			idx=k.find('?')
-			if idx!=-1: # 有?，说明有GET参数，需要去掉
-				k=k[:idx]
+		k=url.replace('http://www.kaixin001.com/','')
+		idx=k.find('?')
+		if idx!=-1: # 有?，说明有GET参数，需要去掉
+			k=k[:idx]
 
-			with self.semaphore4accessCnt:
-				self.accessCnt+=1
-				value=self.statistics4WebAccessData.get(k,0)
-				self.statistics4WebAccessData[k]=value+1
-#				logging.debug("统计: %s=%d",k,self.statistics4WebAccessData[k])
-		else:
-			logging.info("未知分类的url: %s",url)
+		with self.semaphore4accessCnt:
+			self.accessCnt+=1
+			value=self.statistics4WebAccessData.get(k,0)
+			self.statistics4WebAccessData[k]=value+1
+##			logging.debug("统计: %s=%d",k,self.statistics4WebAccessData[k])
 
+	@threadpool_wrapfunc
 	def getResponse(self,url,data=None):
+		"""获得请求url的响应"""
+		res,rurl=None,None
+		for i in range(3): # 尝试3次
+			if i!=0:
+				logging.info("第 %d 次尝试...",i+1)
+			try:
+##				logging.debug("访问 %s",url)
+				r = self.opener.open(
+					urllib.request.Request(url,urllib.parse.urlencode(data) if data else None),
+					timeout=30)
+				res=r.read()
+				rurl=r.geturl()
+				self.statisticsWebAccess(url)
+				break
+			except urllib.error.HTTPError as e:
+				logging.exception("请求出错！ %s",e)
+			except urllib.error.URLError as e:
+				logging.exception("访问地址 %s 失败! %s",url,e)
+			except IOError as e:
+				logging.info("IO错误! %s",e)
+			except Exception as e:
+				logging.info("未知错误! %s",e)
+				raise
+
+		return (res,rurl)
+
+	def getResponseEx(self,url,data=None):
 		"""获得请求url的响应"""
 		res,rurl=None,None
 		for i in range(3): # 尝试3次
@@ -1622,7 +1864,7 @@ class Kaixin(object):
 					except IndexError:
 						logging.debug("解析帮忙结果失败!\n%s",etree.tostring(tree,encoding='gbk').decode('gbk'))
 
-					time.sleep(3)
+##					time.sleep(3)
 
 			if self.exitevent.wait(self.cfgData['internal4cafeDoEvent']):
 				logging.info("%s 检测到退出信号",task_key)
@@ -1799,7 +2041,7 @@ class Kaixin(object):
 							self.tasklist[k]=Timer(waittime, self.task_cafe,(cafeid,orderid,'cafe-%02d'%(i+1,)))
 							self.tasklist[k].setName('灶台-%02d-%s'%(i+1,orderid))
 							self.tasklist[k].start()
-							waittime=(i+1)*5
+							waittime=0
 				else:
 					logging.info("根据配置, 不查看灶台不做菜.")
 
@@ -1865,7 +2107,7 @@ class Kaixin(object):
 					break
 				if self.event4cafe[orderid]['exit'].is_set():
 					break
-				self.exitevent.wait(5)
+##				self.exitevent.wait(5)
 
 			self.event4cafe[orderid]['consume'].clear()
 
@@ -2035,7 +2277,7 @@ class Kaixin(object):
 				step_name=tree.xpath('dish/stepname')[0].text
 				tips=tree.xpath('dish/tips/tips')[0].text
 				logging.debug("%s 灶台 %s %s/%s, 下一步: %s",task_key,orderid,step_name,dish_name,tips)
-				self.exitevent.wait(3)
+##				self.exitevent.wait(3)
 				continue
 
 ##			logging.debug("%s 灶台 %s 菜名 %s 进入耗时阶段(%s) \n%s",
@@ -2190,7 +2432,6 @@ import os
 import copy
 from threading import Timer
 from threading import Event
-from threading import Thread
 from threading import Semaphore
 import _thread
 import datetime
@@ -2203,8 +2444,15 @@ import win32api
 import win32event
 import math
 import tkinter
-
+from queue import Queue
+from queue import Empty
+from threading import Lock
+from threading import Condition
+from random import randint
 if __name__=='__main__':
+##	i=fakeKaixin()
+##	i.run()
+
 	i=Kaixin(sys.argv[1])
 ##	i.getFishinfo()
 	i.run()
@@ -2212,3 +2460,4 @@ if __name__=='__main__':
 ##	cProfile.run('''Kaixin(r'd:\kaixin.ini').run()''',r'd:\kaixin-profile.txt')
 	#p=pstats.Stats(ur'd:\kaixin-profile.txt')
 	#p.sort_stats('time', 'cum').print_stats('kaixin')
+
