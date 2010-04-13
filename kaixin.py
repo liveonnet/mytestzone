@@ -2,11 +2,14 @@
 #coding=utf-8
 from threading import Thread
 
+# 装饰器
+# 将对 Kaixin.getResponse() 的调用转为对 ThreadPool4Kaixin.getResponse() 的调用
 def threadpool_wrapfunc(func):
+	assert func.__name__=='getResponse' # 只用于 Kaixin.getResponse()
 	def wrappedFunc(*args,**kwargs):
-##		logging.debug("[bfr] %s calling, args=%s, kwargs=%s",func.__name__,args,kwargs)
-		# 将对 Kaixin.getResponse() 的调用转为对ThreadPool4Kaixin.getResponseEx() 的调用
-		return args[0].pool.getResponse(args[0].getResponseEx,*args[1:],**kwargs)
+#		if len(kwargs)!=0: # 带额外参数
+#			logging.debug("args=%s, kwargs=%s",args,kwargs)
+		return args[0].pool.getResponse(func,*args,**kwargs)
 	return wrappedFunc
 
 
@@ -28,7 +31,7 @@ class Worker(Thread):
 			k,func,args,kwargs=get()
 ##			k,func,args,kwargs=self.__pool.getTask()
 			if k==-1:
-				logging.info("工作线程 %s 退出",self.name)
+				logging.info("工作线程 %s 退出.",self.name)
 				break
 ##			logging.info("工作 %s 获取任务 k=%s func=%s args=%s kwargs=%s",self.name,k,func.__name__,args,kwargs)
 			try:
@@ -86,7 +89,10 @@ class ThreadPool4Kaixin(object):
 		k="%.16f"%(random(),)
 
 		# 放入请求数据(函数和参数)
-		self.__faketasks.put((k,func,args,kwargs))
+		if kwargs.get('nolimitspeed',False)==True: # 不限速
+			self.__tasks.put((k,func,args,kwargs))
+		else:
+			self.__faketasks.put((k,func,args,kwargs))
 
 		# 等待结果
 		while True:
@@ -105,9 +111,13 @@ class ThreadPool4Kaixin(object):
 		logging.info("等待任务队列被处理完...")
 		self.__tasks.join()
 
-		while len(self.__taskresult)!=0:
-			logging.info("等待 任务结果全被取走...")
-			time.sleep(1)
+		for i in range(3):
+			if len(self.__taskresult)!=0:
+				logging.info("等待 任务结果全被取走...%02ds",(i+1)*2)
+				time.sleep((i+1)*2)
+		if len(self.__taskresult)!=0:
+			logging.info("丢弃未取走的任务结果!\n%s",'\n'.join(('%s=%s'%(v[1],v[0]) for v in self.__taskresult.values())))
+			self.__taskresult.clear()
 
 		logging.info("触发工作线程退出...")
 		for _ in range(len(self.__workers)):
@@ -120,16 +130,19 @@ class ThreadPool4Kaixin(object):
 	def limitSpeedThread(self):
 		'''控制速度的线程，通过控制请求进入任务队列的速度来控制任务执行频率
 		目前不区分请求的来源'''
-		logging.info("速度控制线程启动")
+		logging.info("速度控制线程启动, 速度限制为 %d秒.",self.__speedlimit)
+		maxfaketasks=0
 		while True:
 			time.sleep(self.__speedlimit)
 			try:
 				x=self.__faketasks.get_nowait()
 				self.__tasks.put(x)
-				logging.debug("控制速度线程 队列长度 %d",self.__faketasks.qsize())
+##				logging.debug("控制速度线程 队列长度 %d",self.__faketasks.qsize())
+				if maxfaketasks<self.__faketasks.qsize():
+					maxfaketasks=self.__faketasks.qsize()
 			except Empty:
 				if self.exitevent.is_set():
-					logging.info("控制速度线程退出")
+					logging.info("控制速度线程退出, 最大队列长度 %d",maxfaketasks)
 					break
 
 class fakeKaixin(object):
@@ -266,7 +279,7 @@ class Kaixin(object):
 			if __name__=='__main__':
 				console=logging.StreamHandler()
 				console.setLevel(logging.INFO)
-				console.setFormatter(logging.Formatter('%(thread)d %(message)s'))
+				console.setFormatter(logging.Formatter('%(asctime)s %(message)s','%H:%M:%S'))
 				logging.getLogger('').addHandler(console)
 			logging.info("log file: %s",self.logfile)
 		else: # 为空则认为是log不写入文件，只输出到stdout
@@ -370,11 +383,15 @@ class Kaixin(object):
 			# 创建监控线程
 			_thread.start_new_thread(self.monitorExitFlag,())
 
+		self.semaphore4accessCnt=Semaphore() # 控制对统计变量的访问
 		self.accessCnt=0 # 统计访问次数
-		self.semaphore4accessCnt=Semaphore()
 		self.statistics4WebAccessData={} # 具体记录访问不同组件的次数
 
-		self.pool=ThreadPool4Kaixin(10,2)
+		try:
+			self.cfgData['limitspeed']=self.cfg.getint('account','limitspeed')
+		except configparser.NoOptionError:
+			self.cfgData['limitspeed']=2 # 默认访问间隔为2秒
+		self.pool=ThreadPool4Kaixin(10,self.cfgData['limitspeed']) # 建立线程池
 
 		logging.info("%s 初始化完成.",self.__class__.__name__)
 
@@ -444,7 +461,7 @@ class Kaixin(object):
 		if self.signed_in:
 			del self.friends4garden[:]
 ##			r = self.getResponse('http://www.kaixin001.com/app/app.php?aid=1062&url=garden/index.php')
-			r = self.getResponse('http://www.kaixin001.com/!house/garden/index.php')
+			r = self.getResponse('http://www.kaixin001.com/!house/garden/index.php',nolimitspeed=True)
 			m = re.search('var g_verify = "(.+)";', r[0].decode())
 			self.verify = m.group(1)
 			logging.debug("verify=%s",self.verify)
@@ -714,7 +731,7 @@ class Kaixin(object):
 
 		return True
 
-	def stealOneCrop(self,farmnum,seedid,fuid,taskkey=''):
+	def stealOneCrop(self,farmnum,seedid,fuid,taskkey='',**kwargs):
 		"""偷取单一作物"""
 		tasklogstring=''
 		if taskkey!='':
@@ -730,7 +747,7 @@ class Kaixin(object):
 		r = self.getResponse('http://www.kaixin001.com/!house/!garden//havest.php?%s'%
 			(urllib.parse.urlencode(
 			{'farmnum':farmnum,'seedid':seedid,'fuid':fuid,'r':"%.16f"%(random(),),'confirm':'0'}),),
-			None)
+			None,**kwargs)
 		tree = etree.fromstring(r[0])
 
 		ret=tree.xpath('ret')[0].text
@@ -768,7 +785,7 @@ class Kaixin(object):
 			self.signin()
 		if self.signed_in:
 			del self.friends4ranch[:]
-			r = self.getResponse('http://www.kaixin001.com/app/app.php?aid=1062&url=ranch/index.php')
+			r = self.getResponse('http://www.kaixin001.com/app/app.php?aid=1062&url=ranch/index.php',nolimitspeed=True)
 			m = re.search('var g_verify = "(.+)";', r[0].decode())
 			if m:
 				self.verify = m.group(1)
@@ -894,7 +911,7 @@ class Kaixin(object):
 									del self.tasklist[k]
 								logging.info("加入定时执行队列 key=%s %d (%s,%s,%s)",k,scd,fuidtext,skey,typetext)
 								if scd<60:
-									t=Timer(scd+0.15, self.stealRanchProduct,(fuidtext,skey,typetext,k))
+									t=Timer(scd+0.15, self.stealRanchProduct,(fuidtext,skey,typetext,k),{'nolimitspeed':True})
 								else:
 									t=Timer(scd,self.task_ranch,(fuidtext,skey,typetext,k))
 								t.start()
@@ -948,7 +965,7 @@ class Kaixin(object):
 									continue # 不更新
 							logging.info("加入定时执行队列 key=%s %d (%s,%s,%s)",k,scd,fuid,skey,'0')
 							if scd<60:
-								t=Timer(scd+0.15, self.stealRanchProduct,(fuid,skey,'0',k))
+								t=Timer(scd+0.15, self.stealRanchProduct,(fuid,skey,'0',k),{'nolimitspeed':True})
 								t.sleeptime=scd
 							else:
 								t=Timer(scd,self.task_ranch,(fuid,skey,'0',k))
@@ -959,7 +976,7 @@ class Kaixin(object):
 				except Exception as e:
 					logging.info("解析animals/item失败! (%s)",etree.tostring(i,encoding='gbk').decode('gbk'))
 
-	def stealRanchProduct(self,fuid,skey,typetext,taskkey=''):
+	def stealRanchProduct(self,fuid,skey,typetext,taskkey='',**kwargs):
 		"""steal one item 偷取一个牧场产品"""
 		tasklogstring=''
 		if taskkey!='':
@@ -972,7 +989,7 @@ class Kaixin(object):
 
 		logging.debug("<=== %s (%s,%s,%s) 偷取 %s(%s) 的 %s ... ",tasklogstring,fuid,skey,typetext,self.cfgData['friends'][fuid],fuid,self.cfgData['animallist'][skey][1])
 		r = self.getResponse('http://www.kaixin001.com/!house/!ranch/havest.php',
-			{'verify':self.verify,'fuid':fuid,'skey':skey,'seedid':'0','id':'0','type':typetext,'foodnum':'1'})
+			{'verify':self.verify,'fuid':fuid,'skey':skey,'seedid':'0','id':'0','type':typetext,'foodnum':'1'},**kwargs)
 		if not r[0]:
 			return False
 		tree = etree.fromstring(r[0])
@@ -1348,7 +1365,7 @@ class Kaixin(object):
 				(urllib.parse.urlencode(
 				{'verify':self.verify,'fuid':i_fuid,'r':"%.16f"%(random(),),
 				'dragon_shake':'move'}),),
-				None)
+				None,nolimitspeed=True)
 		tree = etree.fromstring(r[0])
 
 		ret=tree.xpath('ret')[0].text
@@ -1401,7 +1418,7 @@ class Kaixin(object):
 				scd=0.05
 				#trycnt=10
 			for i in range(trycnt):
-				reslt=self.stealRanchProduct(fuidtext,skey,typetext,task_key)
+				reslt=self.stealRanchProduct(fuidtext,skey,typetext,task_key,nolimitspeed=True)
 				#if i>4: scd*=2
 				if reslt==False:
 					if i!=trycnt-1:
@@ -1452,7 +1469,7 @@ class Kaixin(object):
 				scd=0.05
 				trycnt=10
 			for i in range(trycnt):
-				reslt=self.stealRanchProduct(i_fuid,skey,i_typetext,task_key)
+				reslt=self.stealRanchProduct(i_fuid,skey,i_typetext,task_key,nolimitspeed=True)
 				if reslt==False:
 					scd*=2
 					if i!=trycnt-1:
@@ -1543,7 +1560,7 @@ class Kaixin(object):
 							return
 
 						#logging.info(u"(可偷) %d/%s (%s--%s--%s--%s)",left,all,farmnum,seedid,name,crops)
-						rslt=self.stealOneCrop(farmnum,seedid,i_fuid,task_key)
+						rslt=self.stealOneCrop(farmnum,seedid,i_fuid,task_key,nolimitspeed=True)
 			return
 
 	def getRanchFruitInfo(self,i_type,i_id):
@@ -1651,7 +1668,7 @@ class Kaixin(object):
 ##			logging.debug("统计: %s=%d",k,self.statistics4WebAccessData[k])
 
 	@threadpool_wrapfunc
-	def getResponse(self,url,data=None):
+	def getResponse(self,url,data=None,**kwargs):
 		"""获得请求url的响应"""
 		res,rurl=None,None
 		for i in range(3): # 尝试3次
@@ -1678,32 +1695,6 @@ class Kaixin(object):
 
 		return (res,rurl)
 
-	def getResponseEx(self,url,data=None):
-		"""获得请求url的响应"""
-		res,rurl=None,None
-		for i in range(3): # 尝试3次
-			if i!=0:
-				logging.info("第 %d 次尝试...",i+1)
-			try:
-##				logging.debug("访问 %s",url)
-				r = self.opener.open(
-					urllib.request.Request(url,urllib.parse.urlencode(data) if data else None),
-					timeout=30)
-				res=r.read()
-				rurl=r.geturl()
-				self.statisticsWebAccess(url)
-				break
-			except urllib.error.HTTPError as e:
-				logging.exception("请求出错！ %s",e)
-			except urllib.error.URLError as e:
-				logging.exception("访问地址 %s 失败! %s",url,e)
-			except IOError as e:
-				logging.info("IO错误! %s",e)
-			except Exception as e:
-				logging.info("未知错误! %s",e)
-				raise
-
-		return (res,rurl)
 
 	def yaoqian(self):
 		"""地块		1,2, 3, 9,13
