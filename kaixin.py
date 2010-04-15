@@ -116,7 +116,7 @@ class ThreadPool4Kaixin(object):
 				logging.info("等待 任务结果全被取走...%02ds",(i+1)*2)
 				time.sleep((i+1)*2)
 		if len(self.__taskresult)!=0:
-			logging.info("丢弃未取走的任务结果!\n%s",'\n'.join(('%s=%s'%(v[1],v[0]) for v in self.__taskresult.values())))
+			logging.info("丢弃未取走的任务结果!\n%s",'\n'.join(('%s=%s'%(v[1],v[0].decode('utf8')) for v in self.__taskresult.values())))
 			self.__taskresult.clear()
 
 		logging.info("触发工作线程退出...")
@@ -147,15 +147,10 @@ class ThreadPool4Kaixin(object):
 
 class fakeKaixin(object):
 	def __init__(self):
-		self.opener = urllib.request.build_opener()#urllib.request.HTTPCookieProcessor(self.cj))
-		self.opener.addheaders = [('User-Agent', 'Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.9.1.3) Gecko/20090824 Firefox/3.5.3')]
-		urllib.request.install_opener(self.opener)
-
 		logging.basicConfig(level=logging.INFO,
 			format='%(thread)d %(message)s')
 
 		self.semaphore4accessCnt=Semaphore()
-		self.accessCnt=0
 		self.statistics4WebAccessData={} # 具体记录访问不同组件的次数
 
 		self.pool=ThreadPool4Kaixin(10,2)
@@ -164,36 +159,10 @@ class fakeKaixin(object):
 
 	def fakestatisticsWebAccess(self,a,b):
 		with self.semaphore4accessCnt:
-			self.accessCnt+=1
 			v=self.statistics4WebAccessData.get(a,0)
 			self.statistics4WebAccessData[a]=v+1
 			v=self.statistics4WebAccessData.get(b,0)
 			self.statistics4WebAccessData[b]=v+1
-
-	def getResponse(self,url,data=None):
-		"""获得请求url的响应"""
-		res,rurl=None,None
-		for i in range(3): # 尝试3次
-			if i!=0:
-				logging.info("第 %d 次尝试...",i+1)
-			try:
-##				logging.debug("访问 %s",url)
-				r = self.opener.open(
-					urllib.request.Request(url,urllib.parse.urlencode(data) if data else None),
-					timeout=30)
-				res=r.read()
-				rurl=r.geturl()
-				self.statisticsWebAccess(url)
-				break
-			except urllib.error.HTTPError as e:
-				logging.exception("请求出错！ %s",e)
-			except urllib.error.URLError as e:
-				logging.exception("访问地址 %s 失败! %s",url,e)
-			except IOError as e:
-				logging.info("IO错误! %s",e)
-			except Exception as e:
-				logging.info("未知错误! %s",e)
-				raise
 
 	def testfunc(self,x,y):
 		self.fakestatisticsWebAccess(x,y)
@@ -235,7 +204,7 @@ class fakeKaixin(object):
 			logging.info("用户中断执行.")
 			self.exitevent.set()
 
-		logging.info("网络访问次数: %d",self.accessCnt)
+		logging.info("网络访问次数: %d",sum(self.statistics4WebAccessData.values()))
 		if len(self.statistics4WebAccessData)!=0:
 			logging.info("访问分类统计:\n%s",'\n'.join( ("%s: %d"%(k,v) for k,v in self.statistics4WebAccessData.items() ) ) )
 
@@ -262,13 +231,15 @@ class Kaixin(object):
 		self.cfg=configparser.SafeConfigParser()
 		self.cfg.readfp(codecs.open(self.inifile,'r','utf-8-sig'))
 
+		self.rundate=time.strftime('%Y%m%d') # 记录执行日期
+
 		# logging to file
 		self.cfgData['logdir']=self.cfg.get('account','logdir',self.curdir)
 		self.cfgData['logsuffix']=self.cfg.get('account','logsuffix','%d'%(os.getpid(),))
 		if self.cfgData['logdir']:
 			if not os.path.isabs(self.cfgData['logdir']):
 				self.cfgData['logdir']=os.path.join(self.curdir,self.cfgData['logdir'])
-			self.logfile=os.path.join(self.cfgData['logdir'],'kaixin-%s-%s.log'%(time.strftime('%Y%m%d'),self.cfgData['logsuffix']))
+			self.logfile=os.path.join(self.cfgData['logdir'],'kaixin-%s-%s.log'%(self.rundate,self.cfgData['logsuffix']))
 			logging.basicConfig(level=logging.DEBUG,
 		#			format="%(asctime)s %(levelname)s %(funcName)s | %(message)s",
 				  format='%(asctime)s %(thread)d %(levelname)s %(funcName)s %(lineno)d | %(message)s',
@@ -317,6 +288,12 @@ class Kaixin(object):
 
 		ignoreseeds=self.cfg.get('account','ignoreseeds')
 		self.cfgData['ignoreseeds']=json.JSONDecoder().decode(ignoreseeds) # 忽略不处理的作物
+
+		gardenignorefriends=self.cfg.get('account','gardenignorefriends')
+		self.cfgData['gardenignorefriends']=json.JSONDecoder().decode(gardenignorefriends)# 忽略不查看的花园
+
+		ranchignorefriends=self.cfg.get('account','ranchignorefriends')
+		self.cfgData['ranchignorefriends']=json.JSONDecoder().decode(ranchignorefriends)# 忽略不查看的牧场
 
 		forcestealseeds=self.cfg.get('account','forcestealseeds')
 		self.cfgData['forcestealseeds']=json.JSONDecoder().decode(forcestealseeds) # 强制偷取的作物(不考虑其价值)
@@ -384,8 +361,21 @@ class Kaixin(object):
 			_thread.start_new_thread(self.monitorExitFlag,())
 
 		self.semaphore4accessCnt=Semaphore() # 控制对统计变量的访问
-		self.accessCnt=0 # 统计访问次数
-		self.statistics4WebAccessData={} # 具体记录访问不同组件的次数
+		# 具体记录访问不同组件的次数
+		statistics4WebAccessData=None
+		try:
+			statistics4WebAccessData=self.cfg.get('stat-%s'%(self.rundate,),'statisticswebaccess')
+		except configparser.NoSectionError:
+			self.cfg.add_section('stat-%s'%(self.rundate,))
+		except configparser.NoOptionError:
+			pass
+		if statistics4WebAccessData:
+			logging.info("在原有 %s 统计数据基础上继续统计.",self.rundate)
+			self.cfgData['statistics4WebAccessData']=json.JSONDecoder().decode(statistics4WebAccessData)
+		else:
+			logging.info("无 %s 统计数据, 开始全新统计.",self.rundate)
+			self.cfgData['statistics4WebAccessData']={}
+
 
 		try:
 			self.cfgData['limitspeed']=self.cfg.getint('account','limitspeed')
@@ -463,8 +453,12 @@ class Kaixin(object):
 ##			r = self.getResponse('http://www.kaixin001.com/app/app.php?aid=1062&url=garden/index.php')
 			r = self.getResponse('http://www.kaixin001.com/!house/garden/index.php',nolimitspeed=True)
 			m = re.search('var g_verify = "(.+)";', r[0].decode())
-			self.verify = m.group(1)
-			logging.debug("verify=%s",self.verify)
+			if m:
+				self.verify = m.group(1)
+##				logging.debug("verify=%s",self.verify)
+			else:
+				logging.info("获取verify信息失败! 被F5了?")
+				return
 
 			#req = urllib2.Request(
 				#'http://www.kaixin001.com/!house/!garden/getfriendmature.php',
@@ -497,7 +491,7 @@ class Kaixin(object):
 					pass
 					#logging.info(u"%s(%s) 有防偷!",f['real_name'],f['uid'])
 				fname,fuid=f['real_name'],str(f['uid'])
-				if (fname,fuid) not in self.friends4garden:
+				if (fname,fuid) not in self.friends4garden and fuid not in self.cfgData['gardenignorefriends']:
 ##					if f.get('harvest',None)==1:
 					self.friends4garden.append((fname,fuid))
 				if fuid not in self.cfgData['friends']:
@@ -509,9 +503,11 @@ class Kaixin(object):
 
 
 	def checkGarden(self):
-		"""地块		1,2, 3, 9,13
-							4,5, 8,11,14
-							6,7,10,12,15
+		"""地块
+							20 21 22 23 24
+							1  2  3  9  13
+							4  5  8  11 14
+							6  7  10 12 15
 		"""
 		logging.info("共检查%d个好友的花园.",len(self.friends4garden))
 
@@ -537,7 +533,7 @@ class Kaixin(object):
 					logging.info("没有添加本组件!")
 					continue
 				else:
-					logging.info("tree = etree.fromstring(r[0]) 出错!\n%s\n%s",e,r[0].decode())
+					logging.info("tree = etree.fromstring(r[0]) 出错!\n%s\n%s",e,r[0].decode('utf8'))
 
 
 
@@ -804,7 +800,8 @@ class Kaixin(object):
 					pass
 					#logging.info(u"%s(%s) 有防偷!",fname,fuid)
 ##				if f.get('harvest',None)==1:
-				self.friends4ranch.append((fname,fuid))
+				if fuid not in self.cfgData['ranchignorefriends']:
+					self.friends4ranch.append((fname,fuid))
 				if fuid not in self.cfgData['friends']:
 					self.cfgData['friends'][fuid]=fname
 
@@ -831,7 +828,7 @@ class Kaixin(object):
 			try:
 				tree = etree.fromstring(r[0])
 			except etree.XMLSyntaxError as e:
-				logging.info("tree = etree.fromstring(r[0]) 出错!\n%s\n%s",e,r[0])
+				logging.info("tree = etree.fromstring(r[0]) 出错!\n%s\n%s",e,r[0].decode('utf8'))
 
 			# 检查是否有在工作的狗狗
 			try:
@@ -893,6 +890,9 @@ class Kaixin(object):
 						left_from_tips=m.group('left')
 						if tips.find('距下次可收获还有')!=-1:
 							logging.debug("%s 已收获过! (%s)",pname,tips)
+							continue
+						elif tips.find('好友不可收获')!=-1:
+							logging.debug("%s 好友不可收获! (%s)",pname,tips)
 							continue
 						n=re.search(r'再过(\d+小时)?(\d+分)?(\d+秒)?好友可收获',tips)
 						if n:
@@ -1018,10 +1018,16 @@ class Kaixin(object):
 		try:
 ##			self.cafe_getDishlist()
 			# 就启动时偷一次作物
-			self.getFriends4garden()
-			self.checkGarden()
-			self.stealCrop()
+#			self.getFriends4garden()
+#			self.checkGarden()
+#			self.stealCrop()
 
+			if self.cfgData['bGetGranaryInfo']:
+				self.getGranaryInfo()
+				#self.saveCfg()
+				self.cfgData['bGetGranaryInfo']=False
+				logging.info("重新设置 getgranaryinfo=False")
+				input("按任意键继续...")
 
 			if self.cfgData['bDoCafeEvent']:
 				_thread.start_new_thread(self.cafe_doEvent,())
@@ -1030,13 +1036,6 @@ class Kaixin(object):
 				self.cafe_checkStatus()
 
 			while True:
-
-				if self.cfgData['bGetGranaryInfo']:
-					self.getGranaryInfo()
-					#self.saveCfg()
-					self.cfgData['bGetGranaryInfo']=False
-					logging.info("重新设置 getgranaryinfo=False")
-					break
 
 				if self.cfgData['bStealCrop']:
 					self.getFriends4garden()
@@ -1066,6 +1065,7 @@ class Kaixin(object):
 		for k,v in self.tasklist.items():
 			logging.info("删除定时任务 %s",k)
 			v.cancel()
+			v.join()
 		self.tasklist.clear()
 
 		for k,v in self.event4cafe.copy().items():
@@ -1081,9 +1081,9 @@ class Kaixin(object):
 
 		self.pool.exit()
 
-		logging.info("网络访问次数: %d",self.accessCnt)
-		if len(self.statistics4WebAccessData)!=0:
-			logging.info("访问分类统计:\n%s",'\n'.join( ("%s: %d"%(k,v) for k,v in self.statistics4WebAccessData.items() ) ) )
+		logging.info("网络访问次数: %d",sum(self.cfgData['statistics4WebAccessData'].values()))
+		if len(self.cfgData['statistics4WebAccessData'])!=0:
+			logging.info("访问分类统计:\n%s",'\n'.join( ("%s: %d"%(k,v) for k,v in self.cfgData['statistics4WebAccessData'].items() ) ) )
 
 		if len(self.statistics)!=0:
 			logging.info("统计: %s",'\t'.join( ("%s: %d"%(k,v) for k,v in self.statistics.items() ) ) )
@@ -1272,14 +1272,17 @@ class Kaixin(object):
 				selfnum=tree.xpath('selfnum')[0].text
 				bpresent=tree.xpath('bpresent')[0].text
 				fruitprice=tree.xpath('fruitprice')[0].text
-				jtitle=tree.xpath('jtitle')[0].text
-				if jtitle:
-					lohas=tree.xpath('lohas')[0].text
-					jprice=tree.xpath('jprice')[0].text
-					jratio=tree.xpath('jratio')[0].text
-					logging.debug("name=%s,fruitnum=%s,fruitprice=%s,jtitle=%s,lohas=%s,jprice=%s,jratio=%s",name,fruitnum,fruitprice,jtitle,lohas,jprice,jratio)
-				else:
-					logging.debug("name=%s,fruitnum=%s,fruitprice=%s",name,fruitnum,fruitprice)
+				try:
+					jtitle=tree.xpath('jtitle')[0].text
+					if jtitle:
+						lohas=tree.xpath('lohas')[0].text
+						jprice=tree.xpath('jprice')[0].text
+						jratio=tree.xpath('jratio')[0].text
+						logging.debug("name=%s,fruitnum=%s,fruitprice=%s,jtitle=%s,lohas=%s,jprice=%s,jratio=%s",name,fruitnum,fruitprice,jtitle,lohas,jprice,jratio)
+					else:
+						logging.debug("name=%s,fruitnum=%s,fruitprice=%s",name,fruitnum,fruitprice)
+				except IndexError:
+					pass
 
 				try:
 					old=[x for x in self.cfgData['seedlist'] if x[1]==seedid][0]
@@ -1322,6 +1325,10 @@ class Kaixin(object):
 		self.cfg.set('account','animallist',animallist)
 
 		self.cfg.set('account','getgranaryinfo',str(self.cfgData['bGetGranaryInfo']))
+
+		statistics4WebAccessData=json.JSONEncoder(ensure_ascii =False,separators=(',', ':')).encode(self.cfgData['statistics4WebAccessData'])
+		statistics4WebAccessData=statistics4WebAccessData.replace(',"',',\n"')
+		self.cfg.set('stat-%s'%(self.rundate,),'statisticswebaccess',statistics4WebAccessData)
 
 		self.cfg.write(codecs.open(self.inifile,'w','utf-8-sig'))
 
@@ -1662,10 +1669,33 @@ class Kaixin(object):
 			k=k[:idx]
 
 		with self.semaphore4accessCnt:
-			self.accessCnt+=1
-			value=self.statistics4WebAccessData.get(k,0)
-			self.statistics4WebAccessData[k]=value+1
-##			logging.debug("统计: %s=%d",k,self.statistics4WebAccessData[k])
+			if self.rundate!=time.strftime('%Y%m%d'): # 新的一天
+				logging.info("%s 新的一天!",time.strftime('%Y%m%d'))
+				# 现有数据保存做为上一天的数据
+				statistics4WebAccessData=json.JSONEncoder(ensure_ascii =False,separators=(',', ':')).encode(self.cfgData['statistics4WebAccessData'])
+				statistics4WebAccessData=statistics4WebAccessData.replace(',"',',\n"')
+				self.cfg.set('stat-%s'%(self.rundate,),'statisticswebaccess',statistics4WebAccessData)
+				# 更新日期
+				self.rundate=time.strftime('%Y%m%d') 
+				# 取可能已有的数据
+				statistics4WebAccessData=None
+				try:
+					statistics4WebAccessData=self.cfg.get('stat-%s'%(self.rundate,),'statisticswebaccess')
+				except configparser.NoSectionError:
+					self.cfg.add_section('stat-%s'%(self.rundate,))
+				except configparser.NoOptionError:
+					pass
+
+				if statistics4WebAccessData:
+					logging.info("在原有 %s 统计数据基础上继续统计.",self.rundate)
+					self.cfgData['statistics4WebAccessData']=json.JSONDecoder().decode(statistics4WebAccessData)
+				else:
+					logging.info("无 %s 统计数据, 开始全新统计.",self.rundate)
+					self.cfgData['statistics4WebAccessData']={}
+
+			value=self.cfgData['statistics4WebAccessData'].get(k,0)
+			self.cfgData['statistics4WebAccessData'][k]=value+1
+##			logging.debug("统计: %s=%d",k,self.cfgData['statistics4WebAccessData'][k])
 
 	@threadpool_wrapfunc
 	def getResponse(self,url,data=None,**kwargs):
@@ -1696,79 +1726,8 @@ class Kaixin(object):
 		return (res,rurl)
 
 
-	def yaoqian(self):
-		"""地块		1,2, 3, 9,13
-							4,5, 8,11,14
-							6,7,10,12,15
-		"""
-		if not self.signed_in:
-			self.signin()
-		if self.signed_in:
-			del self.friends4garden[:]
-			r = self.getResponse('http://www.kaixin001.com/app/app.php?aid=1062&url=garden/index.php')
-			m = re.search('var g_verify = "(.+)";', r[0].decode())
-			self.verify = m.group(1)
-		else:
-			return False
-		logging.info("共检查%d个好友的花园有没有摇钱树.",len(self.cfgData['friends']))
-
-		cnt=0
-		for fuid, fname in self.cfgData['friends'].items():
-			cnt+=1
-			logging.info(" %02d) 检查 %s(%s)... ",cnt,fname,fuid)
-##			r = self.getResponse('http://www.kaixin001.com/house/garden/getconf.php',
-##				{'verify':self.verify,'fuid':fuid})
-			r = self.getResponse('http://www.kaixin001.com/!house/!garden//getconf.php?%s'%
-				(urllib.parse.urlencode(
-				{'verify':self.verify,'fuid':fuid,'r':"%.16f"%(random(),)}),),
-				None)
-			tree = etree.fromstring(r[0])
-
-			items=tree.xpath('garden/item')
-#			logging.debug("total %d farms in this garden",len(items))
-			for i in items:
-				farmnum=i.xpath('farmnum')[0].text
-
-				# -1=枯死 1=生长中 2=成熟 3=采光未犁地
-				try:
-					cropsstatus=i.xpath('cropsstatus')[0].text
-				except IndexError:
-##					logging.debug("地块 %s 为空",farmnum)
-					continue
-
-				if cropsstatus=='-1':
-##					logging.debug("地块 %s 为枯死的作物",farmnum)
-					continue
-				if cropsstatus=='3':
-##					logging.debug("地块 %s 已经收获光未犁地",farmnum)
-					continue
-
-##				logging.debug("地块 %s cropsstatus=%s",farmnum,cropsstatus)
-
-##				name=i.xpath('name')[0].text
-				crops=i.xpath('crops')[0].text
-				seedid=i.xpath('seedid')[0].text
-
-				if seedid=='198': # 阳光果粒橙
-					logging.info("阳光果粒橙! (%s)",crops)
-##				if seedid=='102': # 是摇钱树
-##					logging.info("有摇钱树!")
-##					if crops.find('点击可摇钱')!=-1: # 可摇钱
-##						r=self.getResponse('http://www.kaixin001.com/!house/!garden/yaoqianshu.php',
-##							{'verify':self.verify,'fuid':fuid})
-##						tree = etree.fromstring(r[0])
-##						ret=tree.xpath('ret')[0].text
-##						if ret!='succ':
-##							reason=tree.xpath('reason')[0].text
-##							logging.info("===> !!! 摇钱失败! (%s,%s)",ret,reason)
-##						else:
-##							tip=tree.xpath('tip')[0].text
-##							logging.info("===> *** 摇钱成功 %s(%s) (%s)",fname,fuid,tip)
-##
-		return True
-
-
 	def getFishinfo(self):
+		'''获取鱼苗信息'''
 		if not self.signed_in:
 			self.signin()
 
@@ -1864,7 +1823,7 @@ class Kaixin(object):
 
 	def cafe_stoveclean(self,cafeid,orderid,task_key=''):
 		logging.debug("%s 灶台 %s 需要清洁",task_key,orderid)
-		for i in range(5):
+		for i in range(3):
 			if self.exitevent.is_set():
 				logging.info("检测到退出事件")
 				break
@@ -1876,21 +1835,26 @@ class Kaixin(object):
 			try:
 				tree=etree.fromstring(r[0])
 			except etree.XMLSyntaxError as e:
-				logging.info("tree=etree.fromstring(r[0]) 出错!\n%s",e)
+				logging.info("tree=etree.fromstring(r[0]) 出错!\n%s\n%s",e,r[0].decode('utf8'))
 				self.cafe_updateVerify()
 				continue
 
 	##		logging.debug("===> %s api_stoveclean返回: %s\n",task_key,etree.tostring(tree,encoding='gbk').decode('gbk'))
-			ret=tree.xpath('ret')[0].text
-			if ret!='succ':
-				logging.info("===> %s 清洁灶台 %s 失败!\n%s",task_key,orderid,etree.tostring(tree,encoding='gbk').decode('gbk'))
-				break
+			try:
+				ret=tree.xpath('ret')[0].text
+			except IndexError as e:
+				logging.info("获取返回信息时发生异常!\n%s\n%s",e,etree.tostring(tree,encoding='gbk').decode('gbk'))
+				continue
+			else:
+				if ret!='succ':
+					logging.info("===> %s 清洁灶台 %s 失败!\n%s",task_key,orderid,etree.tostring(tree,encoding='gbk').decode('gbk'))
+					break
 
-			addcash=tree.xpath('addcash')[0].text
-			addevalue=tree.xpath('addevalue')[0].text
-##			logging.info("===> %s 清洁灶台 %s 成功, 现金 %s  经验 +%s",task_key,orderid,addcash,addevalue)
-			logging.info("===> %s 清洁灶台, 现金 %s  经验 +%s",task_key,addcash,addevalue)
-			return True
+				addcash=tree.xpath('addcash')[0].text
+				addevalue=tree.xpath('addevalue')[0].text
+##				logging.info("===> %s 清洁灶台 %s 成功, 现金 %s  经验 +%s",task_key,orderid,addcash,addevalue)
+				logging.info("===> %s 清洁灶台, 现金 %s  经验 +%s",task_key,addcash,addevalue)
+				return True
 
 		return False
 
@@ -1948,7 +1912,7 @@ class Kaixin(object):
 #				with codecs.open(r'd:\conf-%s.xml'%(self.cfgData['logsuffix'],),'w','utf-8-sig') as f:
 #					f.write(r[0].decode())
 			except etree.XMLSyntaxError as e:
-				logging.info("tree = etree.fromstring(r[0]) 出错!\n%s\n%s",e,r[0].decode())
+				logging.info("tree = etree.fromstring(r[0]) 出错!\n%s\n%s",e,r[0].decode('utf8'))
 				self.cafe_updateVerify()
 				continue
 			else:
@@ -2144,7 +2108,12 @@ class Kaixin(object):
 					ret=tree.xpath('ret')[0].text
 				except IndexError:
 					logging.debug("获取 ret 值失败!\n%s",etree.tostring(tree,encoding='gbk').decode('gbk'))
-					waittime=60
+					if r[0].decode().find('interface/limittip.php')!=-1:
+						logging.info("貌似是访问过多, 被F5了, 主动退出程序...")
+						waittime=3
+						self.exitevent.set()
+					else:
+						waittime=60
 				else:
 					if ret!='succ':
 						logging.debug("===> %s 获取灶台 %s 信息失败!!! ret=%s (%s)",
@@ -2207,7 +2176,8 @@ class Kaixin(object):
 		else:
 			logging.info("更新 cafeverify 失败! \n%s",r[0].decode())
 			if r[0].decode().find('interface/limittip.php')!=-1:
-				logging.info("貌似是访问过多, 被F5了")
+				logging.info("貌似是访问过多, 被F5了, 主动退出...")
+				self.exitevent.set()
 			return False
 		return True
 
@@ -2306,6 +2276,7 @@ class Kaixin(object):
 				return False
 
 		ptag=re.compile('(<.*?>)',re.M|re.U|re.S) # 过滤html的tag
+		pchinese=re.compile('([\u4e00-\u9fa5]+)+?') # 过滤中文
 
 		if not self.cafe_updateVerify():
 			return False
@@ -2316,7 +2287,7 @@ class Kaixin(object):
 		while bnext=='1':
 			r = self.getResponse('http://www.kaixin001.com/cafe/api_dishlist.php?%s'%
 				(urllib.parse.urlencode(
-				{'verify':self.cafeverify,'page':pageno,'r':"%.16f"%(random(),)}),),
+					{'verify':self.cafeverify,'page':pageno,'r':"%.16f"%(random(),),'flag':1}),),
 				None)
 			tree=etree.fromstring(r[0])
 ##			logging.debug("===> api_dishlist: %s\n",etree.tostring(tree,encoding='gbk').decode('gbk'))
@@ -2327,26 +2298,51 @@ class Kaixin(object):
 			for item in dishs:
 				dishid=item.xpath('dishid')[0].text
 				title=item.xpath('title')[0].text
+				s.write('%s(%s): '%(title,dishid))
+
 				tag=item.xpath('tag')[0].text
-				taglist=[i for i in tag.split('<br>') if i!='']
+				taglist=[i for i in tag.split('：<br />') if i!='<br />']
+
 				tag2=item.xpath('tag2')[0].text
-				tag2list=[i for i in tag2.split('<br>') if i!='']
+				tag2list=[i for i in tag2.split('：<br />') if i!='']
+
 				val=item.xpath('val')[0].text
-				vallist=[i for i in val.split('<br>') if i!='']
+				vallist=[i for i in val.split('<br />') if i!='']
+
 				val2=item.xpath('val2')[0].text
-				val2list=[i for i in val2.split('<br>') if i!='']
+				val2list=[i for i in val2.split('<br />') if i!='']
 				val2list=[ptag.sub('',i) for i in val2list]
+
 				dishinfo=dict(zip(taglist+tag2list,vallist+val2list))
 				for k,v in dishinfo.items():
-					s.write('%s%s, '%(k,v))
+					s.write('%s：%s, '%(k,v))
 				bbuy=item.xpath('bbuy')[0].text
-				buyable=item.xpath('buyable')[0].text
-				tips=item.xpath('tips')[0].text
-				price=item.xpath('price')[0].text
+#				buyable=item.xpath('buyable')[0].text
+				evalue=item.xpath('evalue')[0].text # 经验
+				if bbuy=='1': # 可做此菜，此时价格才显示
+					price=item.xpath('price')[0].text # 材料费
 
-				logging.info("%s(%s) bbuy/buyable/price/tips:%s/%s/%s/%s, \n%s",title,dishid,bbuy,buyable,price,tips,s.getvalue())
-				s.seek(0)
-				s.truncate()
+					price=price.lstrip('￥')
+					dishinfo['单份收入']=pchinese.sub('',dishinfo['单份收入'])
+					# 烹饪时间是分钟的转化为小时
+					if dishinfo['烹饪时间'].find('分钟')!=-1:
+						dishinfo['烹饪时间']=int(pchinese.sub('',dishinfo['烹饪时间']))/60.0
+					else:
+						dishinfo['烹饪时间']=int(pchinese.sub('',dishinfo['烹饪时间']))
+
+					# 计算小时收益 小时收益=(烹饪数量*单份收入-清洁灶台费-单次材料费)/烹饪时间(单位是小时)
+					cashperhour=( int(dishinfo['烹饪数量']) * int(dishinfo['单份收入'])-15-int(price)) / dishinfo['烹饪时间']
+					# 计算小时经验 小时经验=单次烹饪经验/烹饪时间(单位是小时)
+					evalueperhour=int(evalue) / dishinfo['烹饪时间']
+					s.write("单价：%s, 经验：%s, 小时收益：%d，小时经验：%d\n"%(price,evalue,cashperhour,evalueperhour))
+				else:
+					tips=item.xpath('tips')[0].text
+					s.write("tips: %s\n"%(tips,))
+
+#				logging.info("%s(%s) bbuy/buyable/price/tips:%s/%s/%s/%s, \n%s",title,dishid,bbuy,buyable,price,tips,s.getvalue())
+#				s.seek(0)
+#				s.truncate()
+		logging.info("菜谱信息:\n%s",s.getvalue())
 
 		s.close()
 
