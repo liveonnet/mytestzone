@@ -27,6 +27,7 @@ class Worker(Thread):
 	def run(self):
 ##		logging.info("isDaemon=%s",self.isDaemon())
 		get=self.__pool.getTask
+		r=None
 		while True:
 			k,func,args,kwargs=get()
 ##			k,func,args,kwargs=self.__pool.getTask()
@@ -275,7 +276,7 @@ class Kaixin(object):
 		self.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(self.cj))
 		self.opener.addheaders = [('User-Agent', 'Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.9.1.3) Gecko/20090824 Firefox/3.5.3')]
 		urllib.request.install_opener(self.opener)
-		self.opener.handle_open['http'][0].set_http_debuglevel(1) # 设置debug以打印出发送和返回的头部信息
+##		self.opener.handle_open['http'][0].set_http_debuglevel(1) # 设置debug以打印出发送和返回的头部信息
 
 		seedlist=self.cfg.get('account','seedlist')
 		self.cfgData['seedlist']=json.JSONDecoder().decode(seedlist)
@@ -388,6 +389,8 @@ class Kaixin(object):
 	def signin(self):
 		"""登录"""
 		r = self.getResponse('http://www.kaixin001.com/home/')
+		if not r:
+			return
 		if r[1] == 'http://www.kaixin001.com/?flag=1&url=%2Fhome%2F':
 			logging.debug("需要登录!")
 			params = {'email':self.cfgData['email'], 'password':self.cfgData['pwd'], 'remember':1,'invisible_mode':0,'url':'/home/'}
@@ -746,32 +749,38 @@ class Kaixin(object):
 			None,**kwargs)
 		tree = etree.fromstring(r[0])
 
-		ret=tree.xpath('ret')[0].text
-		if ret!='succ':
-			reason=tree.xpath('reason')[0].text
-			logging.info("===> %s !!! 偷取失败! (%s,%s)",tasklogstring,ret,reason)
-			if reason.find('正在麻醉中')!=-1:
-				logging.info("麻醉中，不能偷植物产品.")
-				return False
-			#return False
-			return True
-
-		anti=tree.xpath('anti')[0].text
-		if anti=='1':
-			logging.error("===> %s anti=1!!! 被反外挂检测到了 \n%s",tasklogstring,etree.tostring(tree,encoding='gbk').decode('gbk'))
-##			print (chr(7)*5)
-			return False
-
 		try:
-			leftnum=tree.xpath('leftnum')[0].text
-			stealnum=tree.xpath('stealnum')[0].text
-			num=tree.xpath('num')[0].text
-			seedname=tree.xpath('seedname')[0].text
-			logging.debug("%s anti=%s,leftnum=%s,stealnum=%s,num=%s,seedname=%s",tasklogstring,anti,leftnum,stealnum,num,seedname)
-			logging.info("===> %s *** 成功偷取 %s(%s)的 %s %s",tasklogstring,self.cfgData['friends'][fuid],fuid,stealnum,seedname)
-			self.statistics[seedname]=self.statistics.get(seedname,0)+int(stealnum)
+			ret=tree.xpath('ret')[0].text
 		except IndexError:
-			logging.error("===> %s 解析结果失败!!! \n%s",tasklogstring,etree.tostring(tree,encoding='gbk').decode('gbk'))
+			if self.checkLimitTip():
+				return False
+		else:
+			if ret!='succ':
+				reason=tree.xpath('reason')[0].text
+				logging.info("===> %s !!! 偷取失败! (%s,%s)",tasklogstring,ret,reason)
+				if reason.find('正在麻醉中')!=-1:
+					logging.info("麻醉中，不能偷植物产品.")
+					return False
+				#return False
+				return True
+
+			anti=tree.xpath('anti')[0].text
+			if anti=='1':
+				logging.error("===> %s anti=1!!! 被反外挂检测到了 \n%s",tasklogstring,etree.tostring(tree,encoding='gbk').decode('gbk'))
+				self.getGardenSpiritInfo(taskkey,fuid,**kwargs)
+	##			print (chr(7)*5)
+				return False
+
+			try:
+				leftnum=tree.xpath('leftnum')[0].text
+				stealnum=tree.xpath('stealnum')[0].text
+				num=tree.xpath('num')[0].text
+				seedname=tree.xpath('seedname')[0].text
+				logging.debug("%s anti=%s,leftnum=%s,stealnum=%s,num=%s,seedname=%s",tasklogstring,anti,leftnum,stealnum,num,seedname)
+				logging.info("===> %s *** 成功偷取 %s(%s)的 %s %s",tasklogstring,self.cfgData['friends'][fuid],fuid,stealnum,seedname)
+				self.statistics[seedname]=self.statistics.get(seedname,0)+int(stealnum)
+			except IndexError:
+				logging.error("===> %s 解析结果失败!!! \n%s",tasklogstring,etree.tostring(tree,encoding='gbk').decode('gbk'))
 
 		return True
 
@@ -1016,7 +1025,7 @@ class Kaixin(object):
 
 	def run(self):
 		try:
-##			self.cafe_getDishlist()
+#			self.cafe_getDishlist()
 			# 就启动时偷一次作物
 #			self.getFriends4garden()
 #			self.checkGarden()
@@ -1373,7 +1382,11 @@ class Kaixin(object):
 				{'verify':self.verify,'fuid':i_fuid,'r':"%.16f"%(random(),),
 				'dragon_shake':'move'}),),
 				None,nolimitspeed=True)
-		tree = etree.fromstring(r[0])
+		try:
+			tree = etree.fromstring(r[0])
+		except etree.XMLSyntaxError as e:
+			logging.debug("任务 %s 文档化返回数据时发生异常: %s\n%s",task_key,e,r[0].decode('utf-8'))
+			return
 
 		ret=tree.xpath('ret')[0].text
 		if ret!='succ':
@@ -1676,7 +1689,7 @@ class Kaixin(object):
 				statistics4WebAccessData=statistics4WebAccessData.replace(',"',',\n"')
 				self.cfg.set('stat-%s'%(self.rundate,),'statisticswebaccess',statistics4WebAccessData)
 				# 更新日期
-				self.rundate=time.strftime('%Y%m%d') 
+				self.rundate=time.strftime('%Y%m%d')
 				# 取可能已有的数据
 				statistics4WebAccessData=None
 				try:
@@ -1844,7 +1857,8 @@ class Kaixin(object):
 				ret=tree.xpath('ret')[0].text
 			except IndexError as e:
 				logging.info("获取返回信息时发生异常!\n%s\n%s",e,etree.tostring(tree,encoding='gbk').decode('gbk'))
-				continue
+				if self.checkLimitTip(r[0]):
+					break
 			else:
 				if ret!='succ':
 					logging.info("===> %s 清洁灶台 %s 失败!\n%s",task_key,orderid,etree.tostring(tree,encoding='gbk').decode('gbk'))
@@ -1868,27 +1882,32 @@ class Kaixin(object):
 		tree = etree.fromstring(r[0])
 ##		logging.debug("===> %s api_dish2counter 返回: %s\n",task_key,etree.tostring(tree,encoding='gbk').decode('gbk'))
 
-		ret=tree.xpath('ret')[0].text
-		if ret=='succ':
-			try:
-				orderid=tree.xpath('orderid')[0].text
-				torderid=tree.xpath('torderid')[0].text
-				addevalue=tree.xpath('addevalue')[0].text
-				foodnum=tree.xpath('foodnum')[0].text
-				evalue=tree.xpath('account/evalue')[0].text
-##				logging.info("===> %s 成功将 %s 从灶台 %s -->餐台 %s, 现在餐台上数量 %s 经验 %s(+%s)",
-##					task_key,name,orderid,torderid,foodnum,evalue,addevalue)
-				logging.info("===> %s 端菜到餐台 %s (%s), 经验 %s(+%s)",
-					task_key,torderid,foodnum,evalue,addevalue)
-			except IndexError as e:
-				logging.info("解析 orderid/torderid/addevalue/foodnum/evalue时失败！\n%s\n%s",e,etree.tostring(tree,encoding='gbk').decode('gbk'))
-			else:
-				if int(foodnum)>=self.consumepertime: # 大于消费阀值才触发消费
-					self.event4cafe[torderid]['consume'].set()
+		try:
+			ret=tree.xpath('ret')[0].text
+		except IndexError:
+			if self.checkLimitTip(r[0]):
+				return False
 		else:
-			logging.error("===> %s 灶台 %s 端到餐台失败!!! ret=%s (%s)",
-				task_key,orderid,ret,etree.tostring(tree,encoding='gbk').decode('gbk'))
-			return False
+			if ret=='succ':
+				try:
+					orderid=tree.xpath('orderid')[0].text
+					torderid=tree.xpath('torderid')[0].text
+					addevalue=tree.xpath('addevalue')[0].text
+					foodnum=tree.xpath('foodnum')[0].text
+					evalue=tree.xpath('account/evalue')[0].text
+##					logging.info("===> %s 成功将 %s 从灶台 %s -->餐台 %s, 现在餐台上数量 %s 经验 %s(+%s)",
+##						task_key,name,orderid,torderid,foodnum,evalue,addevalue)
+					logging.info("===> %s 端菜到餐台 %s (%s), 经验 %s(+%s)",
+						task_key,torderid,foodnum,evalue,addevalue)
+				except IndexError:
+					logging.info("解析 orderid/torderid/addevalue/foodnum/evalue时失败！\n%s",etree.tostring(tree,encoding='gbk').decode('gbk'))
+				else:
+					if int(foodnum)>=self.consumepertime: # 大于消费阀值才触发消费
+						self.event4cafe[torderid]['consume'].set()
+			else:
+				logging.error("===> %s 灶台 %s 端到餐台失败!!! ret=%s (%s)",
+					task_key,orderid,ret,etree.tostring(tree,encoding='gbk').decode('gbk'))
+				return False
 
 		return True
 
@@ -2108,10 +2127,8 @@ class Kaixin(object):
 					ret=tree.xpath('ret')[0].text
 				except IndexError:
 					logging.debug("获取 ret 值失败!\n%s",etree.tostring(tree,encoding='gbk').decode('gbk'))
-					if r[0].decode().find('interface/limittip.php')!=-1:
-						logging.info("貌似是访问过多, 被F5了, 主动退出程序...")
-						waittime=3
-						self.exitevent.set()
+					if self.checkLimitTip(r[0]):
+						waittime=2
 					else:
 						waittime=60
 				else:
@@ -2175,9 +2192,7 @@ class Kaixin(object):
 			self.cafeverify = m.group(1)
 		else:
 			logging.info("更新 cafeverify 失败! \n%s",r[0].decode())
-			if r[0].decode().find('interface/limittip.php')!=-1:
-				logging.info("貌似是访问过多, 被F5了, 主动退出...")
-				self.exitevent.set()
+			self.checkLimitTip(r[0])
 			return False
 		return True
 
@@ -2216,15 +2231,20 @@ class Kaixin(object):
 				else:
 					break
 ##			logging.debug("===> %s api_cooking: %s\n",task_key,etree.tostring(tree,encoding='gbk').decode('gbk'))
-			ret=tree.xpath('ret')[0].text
-			if ret!='succ':
-##				logging.info("===> %s 灶台 %s 上做菜失败(%s)!\n%s",
-##					task_key,orderid,ret,etree.tostring(tree,encoding='gbk').decode('gbk'))
-				logging.info("===> %s 上做菜失败(%s)!\n%s",
-					task_key,ret,etree.tostring(tree,encoding='gbk').decode('gbk'))
-				self.exitevent.wait(60)
-				continue
-##				return False
+			try:
+				ret=tree.xpath('ret')[0].text
+			except IndexError:
+				if self.checkLimitTip(r[0]):
+					continue
+			else:
+				if ret!='succ':
+##					logging.info("===> %s 灶台 %s 上做菜失败(%s)!\n%s",
+##						task_key,orderid,ret,etree.tostring(tree,encoding='gbk').decode('gbk'))
+					logging.info("===> %s 上做菜失败(%s)!\n%s",
+						task_key,ret,etree.tostring(tree,encoding='gbk').decode('gbk'))
+					self.exitevent.wait(60)
+					continue
+
 			try:
 				dish_name=tree.xpath('dish/name')[0].text
 				stage=tree.xpath('dish/stage')[0].text
@@ -2347,7 +2367,7 @@ class Kaixin(object):
 		s.close()
 
 	def monitorExitFlag(self):
-		''' 监视某文件的存在
+		''' 监视某文件, 以其最后修改时间的改变来触发程序退出(windows下)
 		'''
 		if self.cfgData.get('file2monitor',None)==None:
 			return
@@ -2404,6 +2424,55 @@ class Kaixin(object):
 		win32api.FindCloseChangeNotification(handle)
 		logging.info("监控线程退出.")
 
+	def checkLimitTip(self,r):
+		if r[0].decode().find('interface/limittip.php')!=-1:
+			logging.info("貌似是访问过多, 被F5了, 主动退出程序...")
+			self.exitevent.set()
+			return True
+		return False
+
+	def getGardenSpiritInfo(self,taskkey,fuid,**kwargs):
+		'''保存花园精灵信息'''
+
+		# 获取种子id
+		r=self.getResponse('http://www.kaixin001.com/!house/!garden//smartc.php?%s'%
+				(urllib.parse.urlencode(
+					{'verify':self.verify,'fuid':fuid,'r':"%.16f"%(random(),) } ),
+				),
+				None,**kwargs)
+		tree=etree.fromstring(r[0])
+		try:
+			ret=tree.xpath('ret')[0].text
+		except IndexError:
+			if self.checkLimitTip():
+				return False
+		else:
+			ids=[]
+			if ret!='succ':
+				logging.info("%s 获取花园精灵种子信息失败! ret=%s (%s)",taskkey,ret,etree.tostring(tree,encoding='gbk').decode('gbk'))
+				return False
+			items=tree.xpath('faq/item')
+			for i in items:
+				id=i.xpath('id')[0].text
+				ids.append(id)
+
+			# 获取问题图片
+			tpic=tree.xpath('tpic')[0].text
+			r=self.getResponse('%s?%s'%
+					(tpic,urllib.parse.urlencode(
+						{'verify':self.verify,'r':"%.16f"%(random(),) } )
+					),
+					None,**kwargs)
+			ofname=r'd:\gardenspirit-%s-[%s].png'%(time.strftime("%Y%m%d-%H%M%S"),','.join(ids))
+			with open(ofname,'wb') as f:
+				f.write(r[0])
+				logging.info("%s 花园精灵的问题图片保存在 %s",taskkey,ofname)
+
+		return True
+
+
+
+
 
 
 import logging
@@ -2436,6 +2505,7 @@ from queue import Empty
 from threading import Lock
 from threading import Condition
 from random import randint
+import wingdbstub
 if __name__=='__main__':
 ##	i=fakeKaixin()
 ##	i.run()
