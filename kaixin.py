@@ -54,7 +54,7 @@ class ThreadPool4Kaixin(object):
 
 		self.__taskresult={} # 存放返回的结果
 		self.__lock4result=Lock() # 修改self.__taskresult时需要
-		self.__condition4result=Condition() # 唤醒查看self.__taskresult的线程时需要
+		self.__condition4result=Condition(self.__lock4result) # 唤醒查看self.__taskresult的线程时需要
 		# 初始化工作线程
 		for i in range(workernum):
 			self.__workers.append(Worker(self,'worker-%02d'%(i+1,)))
@@ -76,11 +76,9 @@ class ThreadPool4Kaixin(object):
 	def putResult(self,k,rslt):
 		'''工作线程调用，放入返回结果rslt'''
 		self.__tasks.task_done() # 与 self.__tasks.get() 匹配
-		# 放入结果
-		with self.__lock4result:
-			self.__taskresult[k]=rslt
-		# 唤醒等待者
+		# 放入结果, 唤醒等待者
 		with self.__condition4result:
+			self.__taskresult[k]=rslt
 			self.__condition4result.notify_all()
 
 	def getResponse(self,func,*args,**kwargs):
@@ -99,8 +97,7 @@ class ThreadPool4Kaixin(object):
 		while True:
 			with self.__condition4result:
 				self.__condition4result.wait()
-			if k in self.__taskresult: # 是自己要的数据
-				with self.__lock4result:
+				if k in self.__taskresult: # 是自己要的数据
 					return self.__taskresult.pop(k)
 
 	def exit(self):
@@ -131,7 +128,7 @@ class ThreadPool4Kaixin(object):
 	def limitSpeedThread(self):
 		'''控制速度的线程，通过控制请求进入任务队列的速度来控制任务执行频率
 		目前不区分请求的来源'''
-		logging.info("速度控制线程启动, 速度限制为 %d秒.",self.__speedlimit)
+		logging.info("速度控制线程启动, 速度限制为 %.2f秒.",self.__speedlimit)
 		maxfaketasks=0
 		while True:
 			time.sleep(self.__speedlimit)
@@ -308,9 +305,9 @@ class Kaixin(object):
 
 
 		try:
-			self.cfgData['limitspeed']=self.cfg.getint('account','limitspeed')
+			self.cfgData['limitspeed']=self.cfg.getfloat('account','limitspeed')
 		except configparser.NoOptionError:
-			self.cfgData['limitspeed']=2 # 默认访问间隔为2秒
+			self.cfgData['limitspeed']=2.0 # 默认访问间隔为2.0秒
 		self.pool=ThreadPool4Kaixin(10,self.cfgData['limitspeed']) # 建立线程池
 
 		logging.info("%s 初始化完成.",self.__class__.__name__)
@@ -2291,7 +2288,7 @@ class Kaixin(object):
 				ids.append(id)
 
 			ofnamebase=r'd:\gardenspirit\%s'%(time.strftime("%Y%m%d-%H%M%S"),)
-			for i in range(30):
+			for i in range(10):
 				# 获取问题图片
 				tpic=tree.xpath('tpic')[0].text
 				r=self.getResponse('%s?%s'%
@@ -2305,7 +2302,7 @@ class Kaixin(object):
 					logging.info("%s 花园精灵的问题图片保存在 %s",taskkey,ofname)
 
 			# 尝试识别
-			return self.garden_crackGardenSpirit(ofname,ids)
+			return self.garden_crackGardenSpirit(ofnamebase,ids)
 
 		return False 
 
@@ -2348,14 +2345,19 @@ class Kaixin(object):
 
 	def garden_crackGardenSpirit(self,ofnamebase,ids):
 		'''调用脚本尝试识别花园精灵'''
+		logging.info("ofnamebase=%s,ids=%s",ofnamebase,ids)
 		datadate,timegroup,seedids=None,None,None
 		_,name=os.path.split(ofnamebase)
 		datadate,timegroup=name.split('-',1)
 		seedids=','.join(ids)
-		logging.info("datadate=%,timegroup=%s,ids=%s",datadate,timegroup,seedids)
+		logging.info("datadate=%s,timegroup=%s,ids=%s",datadate,timegroup,seedids)
 		subproc = subprocess.Popen(['d:\\python26\\python.exe', 'E:\\Proj\\python\\svn\\branches\\20091224\\t.py'], stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,shell=False)
 
-		rtndata,errdata=subproc.communicate('%s|%s|%s\n'%(datadate,timegroup,seedids))
+		args2send='%s|%s|%s'%(datadate,timegroup,seedids)
+		logging.info("发送 %s ...",args2send)
+		rtndata,errdata=subproc.communicate(args2send.encode())
+		rtndata=rtndata.decode()
+		errdata=errdata.decode()
 		logging.info("脚本返回信息: |%s|",rtndata)
 		logging.info("错误输出信息: |%s|",errdata)
 		if len(errdata)>6:
