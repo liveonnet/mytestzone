@@ -271,8 +271,25 @@ class Kaixin(object):
 		self.verify=''
 
 		self.cafeverify='' # 餐厅专用verify
-		self.cfgData['dish2cook']=self.cfg.get('account','autocookdishid') # 自动做的菜
-		self.consumepertime=50 # 每次送多少菜给客人
+		# 
+		#  < webaccess_normal 正常  &&
+		#  < webaccess_lowfrq 低频  &&
+		#  被F5
+		self.COOKMODE_UNKNOWN,self.COOKMODE_NORMAL,self.COOKMODE_LOWFRQ,self.COOKMODE_F5,self.COOKMODE_NIGHT=range(5) # 定义餐厅模式
+		self.curcookmode=self.COOKMODE_UNKNOWN # 初始状态未知
+		self.cfgData['dish2cook']=-1 # 初始做的菜id为-1(无效值)
+		self.cfgData['webaccess_normal']=self.cfg.getint('account','webaccess_normal') # 访问计数低于此值属于正常情况
+		self.cfgData['dish2cook_normal']=self.cfg.get('account','dish2cook_normal') # 正常情况下做的菜
+
+		self.cfgData['webaccess_lowfrq']=self.cfg.getint('account','webaccess_lowfrq') # 访问计数到达此值进入低频模式
+		self.cfgData['dish2cook_lowfrq']=self.cfg.get('account','dish2cook_lowfrq') # 低频模式下做的菜
+
+		self.cfgData['dish2cook_bfrnight']=self.cfg.get('account','dish2cook_bfrnight') # 接近被F5前做的菜的列表
+
+		self.cfgData['dish2cook_night']=self.cfg.get('account','dish2cook_night') # 夜晚做的菜
+
+		self.consumepertime=500 # 餐台上积累多少菜时才开始给客人送菜
+		self.consumeerrcnt=50 # 送菜出错超过这个次数则停止送菜
 		self.event4cafe={} # 存放对应消费线程的事件信号
 
 		self.exitevent=Event() # 标识退出整个程序的事件信号
@@ -422,6 +439,9 @@ class Kaixin(object):
 		cnt=0
 		del self.crops2steal[:]
 		for fname,fuid in self.friends4garden:
+			if self.exitevent.is_set():
+				logging.info("检测到退出信号.")
+				break
 ##		for fuid,fname in self.cfgData['friends'].items():
 			cnt+=1
 			logging.info("花园检查 %02d) %s(%s)... ",cnt,fname,fuid)
@@ -657,7 +677,7 @@ class Kaixin(object):
 
 				anti=tree.xpath('anti')[0].text
 				if anti=='1':
-					logging.error("===> %s anti=1!!! 被反外挂检测到了 \n%s",tasklogstring,etree.tostring(tree,encoding='gbk').decode('gbk'))
+					logging.info("===> %s anti=1!!! 出现花园精灵! \n%s",tasklogstring,etree.tostring(tree,encoding='gbk').decode('gbk'))
 					if self.getGardenSpiritInfo(taskkey,fuid,**kwargs):
 						logging.info("回答花园精灵问题成功, 再次尝试偷取...")
 						continue
@@ -915,7 +935,9 @@ class Kaixin(object):
 
 	def run(self):
 		try:
-#			self.cafe_getDishlist()
+			#self.cafe_getDishlist()
+			#input("按任意键继续...")
+
 			# 就启动时偷一次作物
 #			self.getFriends4garden()
 #			self.checkGarden()
@@ -1535,9 +1557,15 @@ class Kaixin(object):
 					logging.info("无 %s 统计数据, 开始全新统计.",self.rundate)
 					self.cfgData['statistics4WebAccessData']={}
 
+				if self.consumeerrcnt<=0:
+					self.consumeerrcnt=50
+					self.consumepertime=500
+
 			value=self.cfgData['statistics4WebAccessData'].get(k,0)
 			self.cfgData['statistics4WebAccessData'][k]=value+1
 ##			logging.debug("统计: %s=%d",k,self.cfgData['statistics4WebAccessData'][k])
+
+		self.switchModeOperation()
 
 	@threadpool_wrapfunc
 	def getResponse(self,url,data=None,**kwargs):
@@ -1658,7 +1686,7 @@ class Kaixin(object):
 
 ##					time.sleep(3)
 
-			logging.info("%d 秒后再次执行餐厅帮助线程(%s)",self.cfgData['internal'],
+			logging.info("%d 秒后再次执行餐厅帮助线程(%s)",self.cfgData['internal4cafeDoEvent'],
 				(datetime.datetime.now()+datetime.timedelta(seconds=self.cfgData['internal4cafeDoEvent'])).strftime("%Y-%m-%d %H:%M:%S"))
 			if self.exitevent.wait(self.cfgData['internal4cafeDoEvent']):
 				logging.info("%s 检测到退出信号",task_key)
@@ -1841,12 +1869,15 @@ class Kaixin(object):
 
 
 						k='cafe-%02d-%s'%(i+1,orderid)
-						if k not in self.tasklist:
-							logging.info("灶台线程 %s %d 秒后执行",k,waittime)
-							self.tasklist[k]=Timer(waittime, self.task_cafe,(cafeid,orderid,'cafe-%02d'%(i+1,)))
-							self.tasklist[k].setName('灶台-%02d-%s'%(i+1,orderid))
-							self.tasklist[k].start()
-							waittime=0
+						#if k not in self.tasklist:
+						logging.info("添加灶台线程 %s, 初始等待时间 %d 秒.",k,waittime)
+							#self.tasklist[k]=Timer(waittime, self.task_cafe,(cafeid,orderid,'cafe-%02d'%(i+1,)))
+							#self.tasklist[k].setName('灶台-%02d-%s'%(i+1,orderid))
+							#self.tasklist[k].start()
+						_thread.start_new_thread(self.task_cafe,(cafeid,orderid,'cafe-%02d'%(i+1,),waittime))
+						#t=Timer(waittime, self.task_cafe,(cafeid,orderid,'cafe-%02d'%(i+1,)))
+						#t.start()
+						waittime=0
 				else:
 					logging.info("根据配置, 不查看灶台不做菜.")
 
@@ -1857,6 +1888,7 @@ class Kaixin(object):
 	def cafe_dish2customer(self,cafeid,orderid,task_key=''):
 		logging.info("建立 消费 %s 线程",orderid)
 		pernum=self.consumepertime
+		pernum=50
 
 		leftnum='0'
 		tm=None
@@ -1887,9 +1919,16 @@ class Kaixin(object):
 				if ret!='succ':
 					logging.info("%s 消费餐台 %s 出错(%s)\n%s",
 				    task_key,orderid,ret,etree.tostring(tree,encoding='gbk').decode('gbk'))
-					if int(leftnum)>pernum:
+
+					self.consumeerrcnt-=1
+					if self.consumeerrcnt<=0:
+						logging.info("到达送菜最大出错次数,停止送菜!")
+						self.consumepertime=5000000 # 设成大数以避免被灶台线程触发
+						tm=None
+					elif int(leftnum)>pernum:
 						leftnum='0'
 						tm=120 # 稍后再试
+
 
 					break
 				oid=tree.xpath('orderid')[0].text
@@ -1918,7 +1957,7 @@ class Kaixin(object):
 
 		return True
 
-	def task_cafe(self,cafeid,orderid,task_key):
+	def task_cafe(self,cafeid,orderid,task_key,initsleeptime=0):
 		'''
 				-3 需要清洁
 				-2 被收购 需要清洁
@@ -1927,13 +1966,13 @@ class Kaixin(object):
 				1 耗时操作中
 				2 做好了
 		'''
-		logging.debug("%s 添加灶台线程 %s",task_key,orderid)
+		logging.debug("%s 灶台线程 %s 创建, 初始等待时间: %d 秒.",task_key,orderid,initsleeptime)
 ##		if not self.signed_in:
 ##			self.signin()
 ##			if not self.signed_in:
 ##				return False
 
-		waittime=0
+		waittime=initsleeptime
 		while True:
 			if self.exitevent.wait(waittime):	# 退出信号有效
 				logging.info("%s 检测到退出信号",task_key)
@@ -2132,6 +2171,7 @@ class Kaixin(object):
 		if not self.cafe_updateVerify():
 			return False
 
+		sortedlist=[]
 		s=StringIO()
 		pageno=0
 		bnext='1'
@@ -2186,6 +2226,7 @@ class Kaixin(object):
 					# 计算小时经验 小时经验=单次烹饪经验/烹饪时间(单位是小时)
 					evalueperhour=int(evalue) / dishinfo['烹饪时间']
 					s.write("单价：%s, 经验：%s, 小时收益：%d，小时经验：%d\n"%(price,evalue,cashperhour,evalueperhour))
+					sortedlist.append([dishinfo['烹饪时间'],evalueperhour,cashperhour,dishid,title])
 				else:
 					tips=item.xpath('tips')[0].text
 					s.write("tips: %s\n"%(tips,))
@@ -2194,6 +2235,8 @@ class Kaixin(object):
 #				s.seek(0)
 #				s.truncate()
 		logging.info("菜谱信息:\n%s",s.getvalue())
+		sortedlist.sort(key=lambda x:x[0])
+		logging.info("按烹饪时间排序后:\n%s",'\n'.join(('时 %.2f, 经 %d, 收 %d, id %s, %s'%(t,eh,ch,did,tt) for t,eh,ch,did,tt in sortedlist )))
 
 		s.close()
 
@@ -2256,6 +2299,7 @@ class Kaixin(object):
 		logging.info("监控线程退出.")
 
 	def checkLimitTip(self,r):
+		'''检测F5, 如果检测到则设置退出信号使程序主动退出'''
 		if r.decode().find('interface/limittip.php')!=-1:
 			logging.info("貌似是访问过多, 被F5了, 主动退出程序...")
 			self.exitevent.set()
@@ -2288,7 +2332,7 @@ class Kaixin(object):
 				ids.append(id)
 
 			ofnamebase=r'd:\gardenspirit\%s'%(time.strftime("%Y%m%d-%H%M%S"),)
-			for i in range(10):
+			for i in range(8):
 				# 获取问题图片
 				tpic=tree.xpath('tpic')[0].text
 				r=self.getResponse('%s?%s'%
@@ -2308,6 +2352,7 @@ class Kaixin(object):
 
 
 	def garden_stealCrop(self):
+		'''花园线程'''
 		while True:
 			self.getFriends4garden()
 			if self.exitevent.is_set():
@@ -2328,6 +2373,7 @@ class Kaixin(object):
 
 
 	def ranch_stealProduct(self):
+		'''牧场线程'''
 		while True:
 			self.getFriends4ranch()
 			if self.exitevent.is_set():
@@ -2358,8 +2404,8 @@ class Kaixin(object):
 		rtndata,errdata=subproc.communicate(args2send.encode())
 		rtndata=rtndata.decode()
 		errdata=errdata.decode()
-		logging.info("脚本返回信息: |%s|",rtndata)
-		logging.info("错误输出信息: |%s|",errdata)
+		logging.info("脚本返回stdout信息: |%s|",rtndata)
+		logging.info("脚本返回stderr信息: |%s|",errdata)
 		if len(errdata)>6:
 			r=self.getResponse('http://www.kaixin001.com/!house/!garden//smarta.php?%s'%
 					(urllib.parse.urlencode({'verify':self.verify,'ordernum':errdata})
@@ -2382,6 +2428,7 @@ class Kaixin(object):
 
 				
 	def house_updateVerify(self,url,pattern,force=True,nolmtspd=True):
+		'''访问url用pattern找到verify并更新'''
 		logging.debug("更新verify, force=%s",force)
 
 		if (not force) and self.verify:
@@ -2399,6 +2446,40 @@ class Kaixin(object):
 			return False
 		return True
 
+
+	def switchModeOperation(self):
+		'''根据访问次数切换餐厅做的菜、改变检查花园和牧场的频率'''
+		self.cfgData['dish2cook_night']=self.cfg.get('account','dish2cook_night') # 夜晚做的菜
+
+		cur=sum(self.cfgData['statistics4WebAccessData'].values())
+
+		if cur<= self.cfgData['webaccess_normal'] and self.curcookmode!=self.COOKMODE_NORMAL: # 正常模式
+			self.cfgData['dish2cook']=self.cfgData['dish2cook_normal']
+			logging.info("正常模式: 做菜id=%s",self.cfgData['dish2cook'])
+			self.curcookmode=self.COOKMODE_NORMAL
+			return
+
+		if cur> self.cfgData['webaccess_normal'] and cur<= self.cfgData['webaccess_lowfrq'] and self.curcookmode!=self.COOKMODE_LOWFRQ: # 低频模式
+			logging.info("接近低频阀值! 设置程序进入 低频模式...")
+			self.cfgData['dish2cook']=self.cfgData['dish2cook_lowfrq']  # 切换到做烹饪期稍长的菜的模式, 凉皮经验84收益168十分钟 
+			self.cfgData['internal']=self.cfgData['internal']*2 # 延长花园和牧场检查时间
+			logging.info("低频模式: 做菜id=%s, 花园牧场检查间隔: %d",self.cfgData['dish2cook'],self.cfgData['internal'])
+			self.curcookmode=self.COOKMODE_LOWFRQ
+			return
+
+		if cur>self.cfgData['webaccess_lowfrq'] and self.curcookmode!=self.COOKMODE_F5: # 接近被F5模式
+			timebfrngith=24-int(datetime.datetime.now().strftime("%H")) # 计算距离凌晨还有多少小时(向大取整)
+			logging.info("接近被F5阀值! 设置程序进入 接近被F5模式(距凌晨%d小时)...",timebfrngith)
+			tmplist=self.cfgData['dish2cook_bfrnight'].split('-')
+			if timebfrngith>len(tmplist):
+				logging.info("无合适的备选菜id! 可选菜谱长度为 %d",len(tmplist))
+			else:
+				self.cfgData['dish2cook']=tmplist[timebfrngith-1]
+				self.cfgData['internal']=self.cfgData['internal']*2 # 延长花园和牧场检查时间
+				logging.info("低频模式: 做菜id=%s, 花园牧场检查间隔: %d",self.cfgData['dish2cook'],self.cfgData['internal'])
+				#longtime=24-int(datetime.datetime.now().strftime("%H"))+8 # 计算明天9点还有多少小时
+			self.curcookmode=self.COOKMODE_F5
+			return
 		
 
 
