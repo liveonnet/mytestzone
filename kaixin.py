@@ -17,7 +17,7 @@ class Worker(Thread):
 	'''工作线程，配合线程池工作，发送 (-1,None,None,None) 到任务队列可触发接受此任务的
 	线程退出'''
 	def __init__(self,pool,name=''):
-		super().__init__()
+		Thread.__init__()
 		self.__pool=pool
 		self.daemon=True
 		if name:
@@ -1920,6 +1920,18 @@ class Kaixin(object):
 					logging.info("%s 消费餐台 %s 出错(%s)\n%s",
 				    task_key,orderid,ret,etree.tostring(tree,encoding='gbk').decode('gbk'))
 
+					try:
+						msg=tree.xpath('msg')[0].text
+					except IndexError:
+						pass
+					else:
+						if msg.find('超出送菜次数限制')!=-1:
+							logging.info("超出送菜次数限制! 停止送菜")
+							self.consumepertime=5000000 # 设成大数以避免被灶台线程触发
+							tm=None
+							break
+
+
 					self.consumeerrcnt-=1
 					if self.consumeerrcnt<=0:
 						logging.info("到达送菜最大出错次数,停止送菜!")
@@ -2090,6 +2102,7 @@ class Kaixin(object):
 					'cafeid':cafeid,
 					'orderid':orderid,
 					'dishid':dishid,
+					#'auto':1, # 自动做菜（法国大厨？）
 					'rand':"%.16f"%(random(),)}),),
 				None)
 			try:
@@ -2467,16 +2480,17 @@ class Kaixin(object):
 			self.curcookmode=self.COOKMODE_LOWFRQ
 			return
 
-		if cur>self.cfgData['webaccess_lowfrq'] and self.curcookmode!=self.COOKMODE_F5: # 接近被F5模式
+		if cur>self.cfgData['webaccess_lowfrq'] : # 接近被F5模式（可能执行多次）
 			timebfrngith=24-int(datetime.datetime.now().strftime("%H")) # 计算距离凌晨还有多少小时(向大取整)
-			logging.info("接近被F5阀值! 设置程序进入 接近被F5模式(距凌晨%d小时)...",timebfrngith)
+			#logging.info("接近被F5阀值! 设置程序进入 接近被F5模式(距凌晨%d小时)...",timebfrngith)
 			tmplist=self.cfgData['dish2cook_bfrnight'].split('-')
 			if timebfrngith>len(tmplist):
 				logging.info("无合适的备选菜id! 可选菜谱长度为 %d",len(tmplist))
 			else:
 				self.cfgData['dish2cook']=tmplist[timebfrngith-1]
-				self.cfgData['internal']=self.cfgData['internal']*2 # 延长花园和牧场检查时间
-				logging.info("低频模式: 做菜id=%s, 花园牧场检查间隔: %d",self.cfgData['dish2cook'],self.cfgData['internal'])
+				if self.curcookmode!=self.COOKMODE_F5: # 只延长一次
+					self.cfgData['internal']=self.cfgData['internal']*2 # 延长花园和牧场检查时间
+				logging.info("接近被F5模式: 做菜id=%s, 花园牧场检查间隔: %d",self.cfgData['dish2cook'],self.cfgData['internal'])
 				#longtime=24-int(datetime.datetime.now().strftime("%H"))+8 # 计算明天9点还有多少小时
 			self.curcookmode=self.COOKMODE_F5
 			return
