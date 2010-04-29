@@ -9,7 +9,6 @@ import time
 import hashlib
 import sys
 
-import ImageFont, ImageDraw
 
 def imgFilter(fname):
 	'''过滤干扰线和杂色点'''
@@ -82,10 +81,10 @@ def imgSplit(odir,datadate,grouptime=None):
 	result=[]
 	magic=0
 	if grouptime==None:
-		fname='d:\\%s-*-merged.png'%(datadate,)
+		fname='%s%s-*-merged.png'%(odir,datadate)
 		nlist=glob(fname)
 	else:
-		fname='d:\\%s-%s-merged.png'%(datadate,grouptime)
+		fname='%s%s-%s-merged.png'%(odir,datadate,grouptime)
 		nlist=[fname]
 
 	for n in nlist:
@@ -179,8 +178,8 @@ def cmpPic(datadate,timegroup,ids):
 	assert timegroup!=None 
 	assert timegroup!=''
 	print(ids)
-	imgCompositeSame('d:\\',datadate,timegroup)
-	l=imgSplit('d:\\',datadate,timegroup)
+	imgCompositeSame('d:\\gardenspirit\\merged\\',datadate,timegroup)
+	l=imgSplit('d:\\gardenspirit\\merged\\',datadate,timegroup)
 	assert len(l)==5
 	seedids=ids.split(',')
 	assert len(seedids)==5
@@ -236,6 +235,14 @@ def cmpPic(datadate,timegroup,ids):
 		return result
 
 
+def processImg2Base(odir,datadate):
+	imgCompositeSame(odir,datadate)
+	l=imgSplit(odir,datadate)
+	for idx,i in enumerate(l):
+		i.save('d:\\gardenspirit\\base\\%05d.png'%(idx,))
+
+	removeDup('d:\\gardenspirit\\base\\*.png')
+
 
 if __name__=='__main__':
 ##	imgCompositeSame('d:\\','20100417','202254')
@@ -254,14 +261,14 @@ if __name__=='__main__':
 
 	s = sys.stdin.readline()
 	datadate,timegroup,seedids=s.split('|')
-	f=open(r'd:\getdata.txt','w')
-	f.write(datadate)
-	f.write('\n' )
-	f.write(timegroup)
-	f.write('\n' )
-	f.write(seedids)
-	f.write('\n' )
-	f.close()
+	#f=open(r'd:\getdata.txt','w')
+	#f.write(datadate)
+	#f.write('\n' )
+	#f.write(timegroup)
+	#f.write('\n' )
+	#f.write(seedids)
+	#f.write('\n' )
+	#f.close()
 	rslt=cmpPic(datadate, timegroup,seedids)
 	if len(rslt)==5:
 		rtn=['',]*5
