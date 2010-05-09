@@ -17,7 +17,7 @@ class Worker(Thread):
 	'''工作线程，配合线程池工作，发送 (-1,None,None,None) 到任务队列可触发接受此任务的
 	线程退出'''
 	def __init__(self,pool,name=''):
-		Thread.__init__()
+		Thread.__init__(self)
 		self.__pool=pool
 		self.daemon=True
 		if name:
@@ -2490,7 +2490,7 @@ class Kaixin(object):
 				self.cfgData['dish2cook']=tmplist[timebfrngith-1]
 				if self.curcookmode!=self.COOKMODE_F5: # 只延长一次
 					self.cfgData['internal']=self.cfgData['internal']*2 # 延长花园和牧场检查时间
-				logging.info("接近被F5模式: 做菜id=%s, 花园牧场检查间隔: %d",self.cfgData['dish2cook'],self.cfgData['internal'])
+					logging.info("接近被F5模式: 做菜id=%s, 花园牧场检查间隔: %d",self.cfgData['dish2cook'],self.cfgData['internal'])
 				#longtime=24-int(datetime.datetime.now().strftime("%H"))+8 # 计算明天9点还有多少小时
 			self.curcookmode=self.COOKMODE_F5
 			return
