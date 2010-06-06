@@ -270,6 +270,7 @@ class Kaixin(object):
 
 		self.verify=''
 
+		self.uid='' # 自己的uid
 		self.cafeverify='' # 餐厅专用verify
 		# 
 		#  < webaccess_normal 正常  &&
@@ -342,6 +343,7 @@ class Kaixin(object):
 			m=re.match(r'http://www.kaixin001.com/home/\?uid=(\d{7,}|)',r[1])
 			if m:
 				logging.debug("登录成功! uid=%s .",m.group(1))
+				self.uid=m.group(1)
 				self.cj.save(self.cfgData['cookiefile'])
 				self.signed_in = True
 			else:
@@ -387,8 +389,12 @@ class Kaixin(object):
 				if not self.signed_in:
 					sys.exit(1)
 		else:
-			logging.debug("无需登录!")
+			logging.debug("无需登录! %s",r[1])
 			self.signed_in = True
+			m=re.search(r'"我的开心网ID:(\d{5,10})"',r[0].decode())
+			if m:
+				self.uid=m.group(1)
+				logging.info("uid = %s",self.uid)
 
 	def getFriends4garden(self):
 		"""获取可偷取花园作物的好友列表"""
@@ -1973,7 +1979,7 @@ class Kaixin(object):
 		'''
 				-3 需要清洁
 				-2 被收购 需要清洁
-				-1 需要清洁
+				-1 坏菜 需要清洁
 				0 在做
 				1 耗时操作中
 				2 做好了
@@ -2029,6 +2035,8 @@ class Kaixin(object):
 						stage=tree.xpath('stage')[0].text
 						oid=tree.xpath('orderid')[0].text
 
+					#logging.info("获取 ret 值 \n%s",etree.tostring(tree,encoding='gbk').decode('gbk'))
+
 					if stage=='0': # 在做
 						logging.debug("%s 灶台 %s 准备下一步(%s)",task_key,orderid,stage)
 						ret=self.cafe_cooking(cafeid,orderid,self.cfgData['dish2cook'],task_key)
@@ -2036,6 +2044,10 @@ class Kaixin(object):
 							waittime=ret[1]
 
 					elif stage=='-1' or stage=='-2' or stage=='-3': # 需要清洁
+						if stage=='-1': # 尝试恢复坏菜
+							if self.cafe_recoverfood(cafeid,orderid,task_key):
+								self.cafe_dish2counter(cafeid,orderid,'xxxx',task_key)
+							
 						logging.debug("%s 灶台 %s 需要清洁(%s)",task_key,orderid,stage)
 						if self.cafe_stoveclean(cafeid,orderid,task_key):
 							ret=self.cafe_cooking(cafeid,orderid,self.cfgData['dish2cook'],task_key)
@@ -2170,6 +2182,52 @@ class Kaixin(object):
 			break
 
 		return False,None
+
+	def cafe_recoverfood(self,cafeid,orderid,task_key=''):
+		logging.debug("%s 灶台 %s 尝试恢复坏菜",task_key,orderid)
+		p=re.compile(r'''<div id="maincontent">\n<\?xml version="1.0" encoding="UTF-8" \?>\n(.+?)<!-- module end --></div>''')
+
+		for i in range(3):
+			if self.exitevent.is_set():
+				logging.info("检测到退出事件")
+				break
+			# 恢复坏菜
+			r = self.getResponse('http://www.kaixin001.com/!cafe/api_recoverfood.php?%s'%
+				(urllib.parse.urlencode(
+					{'verify':self.cafeverify,'cafeid':cafeid,'uid': self.uid,'orderid':orderid,'rand':"%.16f"%(random(),)}),),
+				None)
+
+			m=p.search(r[0].decode())
+			if not m:
+				logging.info("获取恢复坏菜的返回信息时失败! %s",r[0].decode('utf8'))
+				break
+
+			try:
+				tree=etree.fromstring(m.group(1))
+			except etree.XMLSyntaxError as e:
+				#logging.info("tree=etree.fromstring(r[0]) 出错!\n%s\n%s",e,r[0].decode('utf8'))
+				logging.info("tree=etree.fromstring(r[0]) 出错!\n%s\n%s",e,m.group(1))
+				self.cafe_updateVerify()
+				continue
+
+			logging.debug("===> %s api_recoverfood返回: %s\n",task_key,etree.tostring(tree,encoding='gbk').decode('gbk'))
+			try:
+				ret=tree.xpath('ret')[0].text
+			except IndexError as e:
+				logging.info("获取返回信息时发生异常!\n%s\n%s",e,etree.tostring(tree,encoding='gbk').decode('gbk'))
+				if self.checkLimitTip(r[0]):
+					break
+			else:
+				if ret!='succ':
+					logging.info("===> %s 恢复坏菜 %s 失败!\n%s",task_key,orderid,etree.tostring(tree,encoding='gbk').decode('gbk'))
+					break
+				dname=tree.xpath('dish/name')[0].text
+				stage=tree.xpath('stage')[0].text
+##				logging.info("===> %s 恢复坏菜 %s %s 成功,stage=%s",task_key,orderid,dname,stage)
+				logging.info("===> %s 恢复坏菜 %s 成功, stage=%s",task_key,dname,stage)
+				return True
+
+		return False
 
 	def cafe_getDishlist(self):
 		logging.info("获取菜谱 ... ")
