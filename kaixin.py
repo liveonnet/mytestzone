@@ -261,9 +261,9 @@ class Kaixin(object):
 
 		# 统计收获
 		if self.cfgData['logdir']:
-			self.statistics=shelve.open(os.path.join(self.cfgData['logdir'],'kaixin.statistics'))
+			self.statistics=shelve.open(os.path.join(self.cfgData['logdir'],'kaixin-%s.statistics'%(self.cfgData['logsuffix'],)))
 		else:
-			self.statistics=shelve.open(os.path.join(self.curdir,'kaixin.statistics'))
+			self.statistics=shelve.open(os.path.join(self.curdir,'kaixin-%s.statistics'%(self.cfgData['logsuffix'],)))
 
 		# 检查的地块
 		self.FarmBlock2Check=['1','2','3','9','13','4','5','8','11','14','20','21','22','23','24']
@@ -288,6 +288,11 @@ class Kaixin(object):
 		self.cfgData['dish2cook_bfrnight']=self.cfg.get('account','dish2cook_bfrnight') # 接近被F5前做的菜的列表
 
 		self.cfgData['dish2cook_night']=self.cfg.get('account','dish2cook_night') # 夜晚做的菜
+
+		# X世界相关配置
+		self.cfgData['bDoSpidermanFight']=self.cfg.getboolean('account','DoSpidermanFight') # 是否战斗
+		self.cfgData['internal4spidermanfight']=self.cfg.getint('account','internal4spidermanfight') # 餐厅时间轮询间隔
+
 
 		self.consumepertime=500 # 餐台上积累多少菜时才开始给客人送菜
 		self.consumeerrcnt=50 # 送菜出错超过这个次数则停止送菜
@@ -967,6 +972,9 @@ class Kaixin(object):
 
 			if self.cfgData['bStealRanch']:
 				_thread.start_new_thread(self.ranch_stealProduct,())
+
+			if self.cfgData['bDoSpidermanFight']:
+				_thread.start_new_thread(self.spiderman_doFight,())
 
 			while True:
 				logging.info("\n%s\n%s %d 秒后再次执行(%s) ...  %s\n%s\n",'='*75,'='*15,self.cfgData['internal'],
@@ -2210,7 +2218,7 @@ class Kaixin(object):
 				self.cafe_updateVerify()
 				continue
 
-			logging.debug("===> %s api_recoverfood返回: %s\n",task_key,etree.tostring(tree,encoding='gbk').decode('gbk'))
+			#logging.debug("===> %s api_recoverfood返回: %s\n",task_key,etree.tostring(tree,encoding='gbk').decode('gbk'))
 			try:
 				ret=tree.xpath('ret')[0].text
 			except IndexError as e:
@@ -2356,7 +2364,7 @@ class Kaixin(object):
 
 					win32api.FindNextChangeNotification(handle)
 				elif eventidx==1:
-					logging.info("检测到监控线程退出信号! 监控线程退出 ...")
+					logging.info("检测到退出信号! 监控线程退出 ...")
 					break
 			elif reslt==win32event.WAIT_TIMEOUT:
 				logging.info("WaitForMultipleObjects 超时!") # should never goes here!
@@ -2552,6 +2560,169 @@ class Kaixin(object):
 				#longtime=24-int(datetime.datetime.now().strftime("%H"))+8 # 计算明天9点还有多少小时
 			self.curcookmode=self.COOKMODE_F5
 			return
+
+	def spiderman_doFight(self):
+		'''X世界战斗线程'''
+		if not self.signed_in:
+			self.signin()
+			if not self.signed_in:
+				return False
+
+		pMyHealth=re.compile(r'''<span id="user_health"  >(\d+)</span>''') # 匹配自己的生命值
+		pMyEnergy=re.compile(r'''<span   id="user_energy">(\d+)</span>''') # 匹配自己的能量
+		pMyLevel=re.compile(r'''<span id="user_level">(\d+)</span>''') # 匹配自己的级别
+		pMyNumber=re.compile(r'''<b>你团队的战斗值<font style="font-weight:normal;">\(共<span class="c_green">(\d+)</span>人\)''',re.M|re.S) # 自己的队员数
+		pStamina=re.compile(r'''<span id="user_stamina" >(\d+)</span>''') # 匹配战斗值
+		pFightList=re.compile(r'''<div id="fightcontent">(.+?)</div>''',re.M|re.S) # 定位团伙列表
+		pEach=re.compile(r'''<tr id="tr(?P<key>.+?)" height="\d+">.+?"y noline c_yellow">(?P<name>.+?)</a>.+?级别(?P<level>\d+)级.+?<td class="tac">(?P<number>\d+)</td>.+?</tr>''',re.M|re.S) # 定位首领级别和成员数
+
+
+		task_key='spiderman_fight'
+
+		flist=[] # 保存每次从页面获取的可对战的团队
+		totalexp=0 # 保存总共获得的经验值
+		while True:
+			logging.info("%s 刷新战斗页面...",task_key)
+
+			r=self.getResponse('http://www.kaixin001.com/!spiderman/fight.php',None)
+			try:
+				t=r[0].decode()
+				myhealth=int(re.search(pMyHealth,t).group(1))
+				myenergy=int(re.search(pMyEnergy,t).group(1))
+				mylevel=int(re.search(pMyLevel,t).group(1))
+				mynumber=int(re.search(pMyNumber,t).group(1))
+				stamina=int(re.search(pStamina,t).group(1))
+				logging.info("%s X世界 生命 %d 能量 %d 级别 %d 队员数 %d 战斗值 %d",task_key,myhealth,myenergy,mylevel,mynumber,stamina)
+				if stamina>0: # 战斗值不为0
+					if myhealth<80: # 生命值加满
+						self.spiderman_hospital()
+
+					m=re.search(pFightList,t) # 找团队列表
+					if m: 
+						fightlist=re.finditer(pEach,m.group(1))
+						for i in fightlist:
+							key,name,level,number=i.group('key'),i.group('name'),int(i.group('level')),int(i.group('number'))
+							if level<mylevel-1 and number<mynumber-5: # 选比自己差的团队
+								flist.append((name,key,level,number))
+								logging.info("%s 可选对战团队 %s(%d-%d)",task_key,name,level,number)
+
+						stopfight=False
+						for n,k,_,_ in flist:
+							if self.exitevent.is_set():
+								logging.info("%s X世界战斗检测到退出信号",task_key)
+								stopfight=True
+								break
+							if stopfight==True:
+								break
+
+							for _ in range(3): # 每个团队战三次
+								if self.exitevent.is_set():
+									logging.info("%s X世界战斗检测到退出信号",task_key)
+									stopfight=True
+									break
+								rslt,exp,cash,combat,health=self.spiderman_fight(n,k,task_key)
+								myhealth+=int(health)
+								totalexp+=int(exp)
+
+								if (type(rslt)==type(False) and (not rslt) ) or rslt=='e6' or rslt=='e7': # 挑战失败 或者 返回 e6,e7等错误码, 总之就是不再与此团队对战
+									#if rslt==False:
+										#pass
+										#logging.info("%s 挑战 %s 失败!",task_key,n)
+									#else:
+										#pass
+										#logging.info("%s 挑战 %s 返回 %s",task_key,n,rslt)
+									break
+								elif rslt=='e2': # 战斗值不足
+									logging.info("%s 战斗值不足",task_key)
+									stopfight=True
+									break
+
+								if myhealth<80:
+									logging.info("%s 生命值低于80,去医疗...",task_key)
+									if self.spiderman_hospital():
+										myhealth=100
+
+						if stopfight==False: # 说明还可以再战斗
+							logging.info("%s 可以继续战斗",task_key)
+							del flist[:]
+							continue
+
+
+			except AttributeError:
+				logging.info("%s 获取X世界战斗信息失败",task_key)
+				if self.checkLimitTip(r[0]):
+					break
+			finally:
+				del flist[:]
+
+			logging.info("%d 秒后再次执行X世界战斗线程(%s)",self.cfgData['internal4spidermanfight'],
+				(datetime.datetime.now()+datetime.timedelta(seconds=self.cfgData['internal4spidermanfight'])).strftime("%Y-%m-%d %H:%M:%S"))
+			if self.exitevent.wait(self.cfgData['internal4spidermanfight']):
+				logging.info("%s 检测到退出信号",task_key)
+				break
+
+		logging.info("%s 本次执行共获得经验值 %d",task_key,totalexp)
+
+	def spiderman_fight(self,name,key,task_key=''):
+		'''和一个团队交战,返回 rslt,exp,cash,combat,health
+		rslt 为 True或False 代表挑战成功或者失败
+		rslt 为 str 时代表错误返回值 比如e2代表战斗值为0，e6为频繁挑战，e7为对方逃跑
+		exp 表示增加的经验值
+		cash 代表获得（0或正）或者失去的现金（负）
+		combat 代表战斗值改变（负）
+		health 代表生命值改变（0或者负）
+		''' 
+		logging.debug("%s 和 %s 交战...",task_key,name)
+		r = self.getResponse('http://www.kaixin001.com/!spiderman/!ajax_fight.php',{'cid':2,'objid':key,'tmp':"%.16f"%(random(),)})
+	
+		winorlose,exp,cash,combat,health=None,'0','0','0','0'
+
+		t=r[0].decode()
+		if len(t)==2:
+			winorlose=t
+		else:
+			pTitleArea=re.compile(r'''<ul class="title_area">(.+?)</ul>''',re.S|re.M)
+			pWinLose=re.compile(r'''<img src=".+?bg_banner_(.+?).gif"''')
+			pExp=re.compile(r'''<li class="exp .+?" >经验 (.+?)</li>''')
+			pCash=re.compile(r'''<li class="cash .+?">现金 (.+?)</li>''')
+			pCombat=re.compile(r'''<li class="combat .+?">战斗 (.+?)</li>''')
+			pHealth=re.compile(r'''<li class="health .+?">生命 (.+?)</li>''')
+			try:
+				t=re.search(pTitleArea,t).group(1)
+				s=re.search(pWinLose,t).group(1)
+				if s=='fail':
+					winorlose=False
+				else:
+					winorlose=True
+				exp=re.search(pExp,t).group(1)
+				cash=re.search(pCash,t).group(1)
+				combat=re.search(pCombat,t).group(1)
+				health=re.search(pHealth,t).group(1)
+				logging.info("%s 和 %s 交战结果 %s 经验 %s 现金 %s 战斗值 %s 生命值 %s",task_key,name,winorlose,exp,cash,combat,health)
+			except AttributeError:
+				logging.info("%s 解析战斗结果时失败, 返回:\n%s",task_key,r[0].decode())
+
+		return winorlose,exp,cash,combat,health
+
+	def spiderman_hospital(self,task_key=''):
+		'''恢复生命值'''
+		logging.debug("%s 恢复生命值...",task_key)
+		# 端到餐台
+		r = self.getResponse('http://www.kaixin001.com/!spiderman/!hospital.php?%s'%
+	    (urllib.parse.urlencode(
+	    {'l':'a','cid':2,'tmp':"%.16f"%(random(),)}),),
+	    None)
+
+		t=r[0].decode()
+		if t.find('1|||')!=-1 or t.find('2|||')!=-1: # 成功
+			logging.info("%s 恢复生命值成功",task_key)
+			return True
+
+		pContent=re.complie(r'''<div class="f14" style="line-height:24px;">(.+?)</div>''',re.S|re.M)
+		logging.info("%s 恢复生命值返回:\n%s",re.search(pContent,t).group(1))
+
+		return False
+
 		
 
 
