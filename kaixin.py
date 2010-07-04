@@ -2100,7 +2100,10 @@ class Kaixin(object):
 
 
 	def cafe_cooking(self,cafeid,orderid,dishid,task_key=''):
-		'''做菜 cafeid=餐厅id orderid=灶台id dishid=菜名id'''
+		'''做菜 cafeid=餐厅id orderid=灶台id dishid=菜名id
+		返回值 (True/False,None/\d+)
+		第一个值代表是否做菜成功，如果成功则第二个值代表多少秒后菜将做好
+		'''
 		logging.debug("%s 尝试在灶台 %s 上做 %s ...",task_key,orderid,dishid)
 		if not self.signed_in:
 			self.signin()
@@ -2448,6 +2451,8 @@ class Kaixin(object):
 			if self.exitevent.wait(self.cfgData['internal']):
 				logging.info("花园线程检测到退出事件")
 				break
+
+
 		logging.info("花园线程退出.")
 
 
@@ -2465,6 +2470,8 @@ class Kaixin(object):
 			if self.exitevent.wait(self.cfgData['internal']):
 				logging.info("牧场线程检测到退出事件")
 				break
+
+
 		logging.info("牧场线程退出.")
 
 
@@ -2577,7 +2584,7 @@ class Kaixin(object):
 		pEach=re.compile(r'''<tr id="tr(?P<key>.+?)" height="\d+">.+?"y noline c_yellow">(?P<name>.+?)</a>.+?级别(?P<level>\d+)级.+?<td class="tac">(?P<number>\d+)</td>.+?</tr>''',re.M|re.S) # 定位首领级别和成员数
 
 
-		task_key='spiderman_fight'
+		task_key='X世界'
 
 		flist=[] # 保存每次从页面获取的可对战的团队
 		totalexp=0 # 保存总共获得的经验值
@@ -2585,17 +2592,17 @@ class Kaixin(object):
 			logging.info("%s 刷新战斗页面...",task_key)
 
 			r=self.getResponse('http://www.kaixin001.com/!spiderman/fight.php',None)
+			t=r[0].decode()
 			try:
-				t=r[0].decode()
 				myhealth=int(re.search(pMyHealth,t).group(1))
 				myenergy=int(re.search(pMyEnergy,t).group(1))
 				mylevel=int(re.search(pMyLevel,t).group(1))
 				mynumber=int(re.search(pMyNumber,t).group(1))
 				stamina=int(re.search(pStamina,t).group(1))
-				logging.info("%s X世界 生命 %d 能量 %d 级别 %d 队员数 %d 战斗值 %d",task_key,myhealth,myenergy,mylevel,mynumber,stamina)
+				logging.info("%s 生命 %d, 能量 %d, 级别 %d, 队员数 %d, 战斗值 %d.",task_key,myhealth,myenergy,mylevel,mynumber,stamina)
 				if stamina>0: # 战斗值不为0
 					if myhealth<80: # 生命值加满
-						self.spiderman_hospital()
+						self.spiderman_hospital(task_key)
 
 					m=re.search(pFightList,t) # 找团队列表
 					if m: 
@@ -2604,12 +2611,12 @@ class Kaixin(object):
 							key,name,level,number=i.group('key'),i.group('name'),int(i.group('level')),int(i.group('number'))
 							if level<mylevel-1 and number<mynumber-5: # 选比自己差的团队
 								flist.append((name,key,level,number))
-								logging.info("%s 可选对战团队 %s(%d-%d)",task_key,name,level,number)
+								logging.debug("%s 可选对战团队 %s(%d-%d)",task_key,name,level,number)
 
 						stopfight=False
 						for n,k,_,_ in flist:
 							if self.exitevent.is_set():
-								logging.info("%s X世界战斗检测到退出信号",task_key)
+								logging.info("%s 检测到退出信号",task_key)
 								stopfight=True
 								break
 							if stopfight==True:
@@ -2617,12 +2624,13 @@ class Kaixin(object):
 
 							for _ in range(3): # 每个团队战三次
 								if self.exitevent.is_set():
-									logging.info("%s X世界战斗检测到退出信号",task_key)
+									logging.info("%s 检测到退出信号",task_key)
 									stopfight=True
 									break
 								rslt,exp,cash,combat,health=self.spiderman_fight(n,k,task_key)
 								myhealth+=int(health)
 								totalexp+=int(exp)
+								self.statistics['X世界战斗经验']=self.statistics.get('X世界战斗经验',0)+int(exp)
 
 								if (type(rslt)==type(False) and (not rslt) ) or rslt=='e6' or rslt=='e7': # 挑战失败 或者 返回 e6,e7等错误码, 总之就是不再与此团队对战
 									#if rslt==False:
@@ -2633,29 +2641,29 @@ class Kaixin(object):
 										#logging.info("%s 挑战 %s 返回 %s",task_key,n,rslt)
 									break
 								elif rslt=='e2': # 战斗值不足
-									logging.info("%s 战斗值不足",task_key)
+									logging.info("%s 战斗值不足, 结束本轮战斗",task_key)
 									stopfight=True
 									break
 
 								if myhealth<80:
-									logging.info("%s 生命值低于80,去医疗...",task_key)
-									if self.spiderman_hospital():
+									logging.info("%s 生命值低于80, 去医疗...",task_key)
+									if self.spiderman_hospital(task_key):
 										myhealth=100
 
 						if stopfight==False: # 说明还可以再战斗
-							logging.info("%s 可以继续战斗",task_key)
+							#logging.info("%s 可以继续战斗",task_key)
 							del flist[:]
 							continue
 
 
 			except AttributeError:
-				logging.info("%s 获取X世界战斗信息失败",task_key)
+				logging.info("%s 解析战斗信息失败, 返回:\n%s",task_key,r[0].decode())
 				if self.checkLimitTip(r[0]):
 					break
 			finally:
 				del flist[:]
 
-			logging.info("%d 秒后再次执行X世界战斗线程(%s)",self.cfgData['internal4spidermanfight'],
+			logging.info("%s 目前为止获得经验值 %d, %d 秒后再次执行战斗线程(%s)",task_key,totalexp,self.cfgData['internal4spidermanfight'],
 				(datetime.datetime.now()+datetime.timedelta(seconds=self.cfgData['internal4spidermanfight'])).strftime("%Y-%m-%d %H:%M:%S"))
 			if self.exitevent.wait(self.cfgData['internal4spidermanfight']):
 				logging.info("%s 检测到退出信号",task_key)
@@ -2698,7 +2706,7 @@ class Kaixin(object):
 				cash=re.search(pCash,t).group(1)
 				combat=re.search(pCombat,t).group(1)
 				health=re.search(pHealth,t).group(1)
-				logging.info("%s 和 %s 交战结果 %s 经验 %s 现金 %s 战斗值 %s 生命值 %s",task_key,name,winorlose,exp,cash,combat,health)
+				logging.info("%s 和 %s 交战结果: %s 经验 %s 现金 %s 战斗值 %s 生命值 %s",task_key,name,winorlose,exp,cash,combat,health)
 			except AttributeError:
 				logging.info("%s 解析战斗结果时失败, 返回:\n%s",task_key,r[0].decode())
 
