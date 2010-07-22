@@ -2628,6 +2628,9 @@ class Kaixin(object):
 									stopfight=True
 									break
 								rslt,exp,cash,combat,health=self.spiderman_fight(n,k,task_key)
+								if rslt is None: # 出错
+									break
+
 								myhealth+=int(health)
 								totalexp+=int(exp)
 								self.statistics['X世界战斗经验']=self.statistics.get('X世界战斗经验',0)+int(exp)
@@ -2673,7 +2676,7 @@ class Kaixin(object):
 
 	def spiderman_fight(self,name,key,task_key=''):
 		'''和一个团队交战,返回 rslt,exp,cash,combat,health
-		rslt 为 True或False 代表挑战成功或者失败
+		rslt 为 True或False 代表挑战成功或者失败，None时表示出错
 		rslt 为 str 时代表错误返回值 比如e2代表战斗值为0，e6为频繁挑战，e7为对方逃跑
 		exp 表示增加的经验值
 		cash 代表获得（0或正）或者失去的现金（负）
