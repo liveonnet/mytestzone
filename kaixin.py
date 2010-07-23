@@ -2,6 +2,20 @@
 #coding=utf-8
 from threading import Thread
 
+doagainevent=None # 目前没有用
+exitevent=None
+# 信号处理程序
+def SignalHandler(sig,id):
+	global doagainevent,exitevent
+	if sig==signal.SIGUSR1:
+		print('received signal USR1')
+		if doagainevent:
+			doagainevent.set()
+	if sig==signal.SIGTERM:
+		print('received signal TERM, exit app...')
+		if exitevent:
+			exitevent.set()
+
 # 装饰器
 # 将对 Kaixin.getResponse() 的调用转为对 ThreadPool4Kaixin.getResponse() 的调用
 def threadpool_wrapfunc(func):
@@ -146,6 +160,7 @@ class ThreadPool4Kaixin(object):
 
 class Kaixin(object):
 	def __init__(self,inifile='kaixin.ini'):
+		global doagainevent,exitevent
 		imp.reload(sys)
 		sys.setdefaultencoding('utf-8')
 		self.cfgData={}
@@ -165,7 +180,10 @@ class Kaixin(object):
 		self.cfgData['logsuffix']=self.cfg.get('account','logsuffix','%d'%(os.getpid(),))
 		if self.cfgData['logdir']:
 			if not os.path.isabs(self.cfgData['logdir']):
-				self.cfgData['logdir']=os.path.join(self.curdir,self.cfgData['logdir'])
+				if os.path.expanduser(self.cfgData['logdir']) == self.cfgData['logdir']:
+					self.cfgData['logdir']=os.path.join(self.curdir,self.cfgData['logdir'])
+				else:
+					self.cfgData['logdir']=os.path.expanduser(self.cfgData['logdir'])
 			self.logfile=os.path.join(self.cfgData['logdir'],'kaixin-%s-%s.log'%(self.rundate,self.cfgData['logsuffix']))
 			logging.basicConfig(level=logging.DEBUG,
 		#			format="%(asctime)s %(levelname)s %(funcName)s | %(message)s",
@@ -191,6 +209,8 @@ class Kaixin(object):
 		self.cfgData['email']=self.cfg.get('account','email')
 		self.cfgData['pwd']=self.cfg.get('account','pwd')
 		self.cfgData['cookiefile']=self.cfg.get('account','cookiefile')
+		if self.cfgData['cookiefile']!=os.path.expanduser(self.cfgData['cookiefile']):
+			self.cfgData['cookiefile']=os.path.expanduser(self.cfgData['cookiefile'])
 		logging.info("cookie file: %s",self.cfgData['cookiefile'])
 
 		self.signed_in = False
@@ -298,9 +318,13 @@ class Kaixin(object):
 		self.consumeerrcnt=50 # 送菜出错超过这个次数则停止送菜
 		self.event4cafe={} # 存放对应消费线程的事件信号
 
+		self.doagainevent=Event() # 等待触发X战斗的信号 目前没用
+		doagainevent=self.doagainevent
+
 		self.exitevent=Event() # 标识退出整个程序的事件信号
+		exitevent=self.exitevent
 		# 标识监视文件线程退出等待状态的win32信号
-		self.monitorThreadExitEventHandle=win32event.CreateEvent(None,True,False,None)
+		self.monitorThreadExitEventHandle=None
 
 		try:
 			self.cfgData['file2monitor']=self.cfg.get('account','file2monitor')
@@ -308,7 +332,14 @@ class Kaixin(object):
 			pass
 		else:
 			# 创建监控线程
-			_thread.start_new_thread(self.monitorExitFlag,())
+			try:
+				import win32api
+				import win32event
+			except ImportError:
+				logging.info("没有win32模块，监控线程不启动")
+			else:
+				self.monitorThreadExitEventHandle=win32event.CreateEvent(None,True,False,None)
+				_thread.start_new_thread(self.monitorExitFlag,())
 
 		self.semaphore4accessCnt=Semaphore() # 控制对统计变量的访问
 		# 具体记录访问不同组件的次数
@@ -332,6 +363,11 @@ class Kaixin(object):
 		except configparser.NoOptionError:
 			self.cfgData['limitspeed']=2.0 # 默认访问间隔为2.0秒
 		self.pool=ThreadPool4Kaixin(10,self.cfgData['limitspeed']) # 建立线程池
+
+		if sys.platform=='linux2':
+			# 注册信号处理程序
+			signal.signal(signal.SIGUSR1,SignalHandler)
+			signal.signal(signal.SIGTERM,SignalHandler)
 
 		logging.info("%s 初始化完成.",self.__class__.__name__)
 
@@ -392,7 +428,8 @@ class Kaixin(object):
 						r.close()
 
 				if not self.signed_in:
-					sys.exit(1)
+					self.exitevent.set()
+					#sys.exit(1)
 		else:
 			logging.debug("无需登录! %s",r[1])
 			self.signed_in = True
@@ -982,12 +1019,14 @@ class Kaixin(object):
 					'='*15,'='*75)
 				if self.exitevent.wait(self.cfgData['internal']):
 					logging.info("等待中检测到退出信号")
-					win32event.SetEvent(self.monitorThreadExitEventHandle)
+					if self.monitorThreadExitEventHandle is not None:
+						win32event.SetEvent(self.monitorThreadExitEventHandle)
 					break
 ##				time.sleep(self.cfgData['internal'])
 		except KeyboardInterrupt:
 			logging.info("用户中断执行.")
-			win32event.SetEvent(self.monitorThreadExitEventHandle)
+			if self.monitorThreadExitEventHandle is not None:
+				win32event.SetEvent(self.monitorThreadExitEventHandle)
 			self.exitevent.set()
 
 		self.saveCfg()
@@ -2575,11 +2614,14 @@ class Kaixin(object):
 			if not self.signed_in:
 				return False
 
-		pMyHealth=re.compile(r'''<span id="user_health"  >(\d+)</span>''') # 匹配自己的生命值
+		pMyHealth=re.compile(r'''<span id="user_health"\s+>(\d+)</span>''') # 匹配自己的生命值
 		pMyEnergy=re.compile(r'''<span   id="user_energy">(\d+)</span>''') # 匹配自己的能量
+		pMaxEnergy=re.compile(r'''<span id="user_max_energy">(\d+)</span>''') # 匹配最大的能量
 		pMyLevel=re.compile(r'''<span id="user_level">(\d+)</span>''') # 匹配自己的级别
 		pMyNumber=re.compile(r'''<b>你团队的战斗值<font style="font-weight:normal;">\(共<span class="c_green">(\d+)</span>人\)''',re.M|re.S) # 自己的队员数
 		pStamina=re.compile(r'''<span id="user_stamina" >(\d+)</span>''') # 匹配战斗值
+		pMyExperience=re.compile(r'''<span id='user_experience'>(\d+)</span>''') # 匹配自己的经验值
+		pNextLevelExperience=re.compile(r'''<span id='next_level_experience'>(\d+)</span>''') # 匹配下一级的经验值
 		pFightList=re.compile(r'''<div id="fightcontent">(.+?)</div>''',re.M|re.S) # 定位团伙列表
 		pEach=re.compile(r'''<tr id="tr(?P<key>.+?)" height="\d+">.+?"y noline c_yellow">(?P<name>.+?)</a>.+?级别(?P<level>\d+)级.+?<td class="tac">(?P<number>\d+)</td>.+?</tr>''',re.M|re.S) # 定位首领级别和成员数
 
@@ -2596,10 +2638,14 @@ class Kaixin(object):
 			try:
 				myhealth=int(re.search(pMyHealth,t).group(1))
 				myenergy=int(re.search(pMyEnergy,t).group(1))
+				maxenergy=int(re.search(pMaxEnergy,t).group(1))
 				mylevel=int(re.search(pMyLevel,t).group(1))
 				mynumber=int(re.search(pMyNumber,t).group(1))
 				stamina=int(re.search(pStamina,t).group(1))
-				logging.info("%s 生命 %d, 能量 %d, 级别 %d, 队员数 %d, 战斗值 %d.",task_key,myhealth,myenergy,mylevel,mynumber,stamina)
+				myexperience=int(re.search(pMyExperience,t).group(1))
+				nextlevelexperience=int(re.search(pNextLevelExperience,t).group(1))
+
+				logging.info("%s 生命 %d, 能量 %d/%d, 级别 %d, 队员数 %d, 战斗值 %d, 经验 %d/%d.",task_key,myhealth,myenergy,maxenergy,mylevel,mynumber,stamina,myexperience,nextlevelexperience)
 				if stamina>0: # 战斗值不为0
 					if myhealth<80: # 生命值加满
 						self.spiderman_hospital(task_key)
@@ -2622,13 +2668,14 @@ class Kaixin(object):
 							if stopfight==True:
 								break
 
-							for _ in range(3): # 每个团队战三次
+							for _ in range(5): # 每个团队战5次
 								if self.exitevent.is_set():
 									logging.info("%s 检测到退出信号",task_key)
 									stopfight=True
 									break
 								rslt,exp,cash,combat,health=self.spiderman_fight(n,k,task_key)
 								if rslt is None: # 出错
+									logging.debug("rslt is None")
 									break
 
 								myhealth+=int(health)
@@ -2636,12 +2683,12 @@ class Kaixin(object):
 								self.statistics['X世界战斗经验']=self.statistics.get('X世界战斗经验',0)+int(exp)
 
 								if (type(rslt)==type(False) and (not rslt) ) or rslt=='e6' or rslt=='e7': # 挑战失败 或者 返回 e6,e7等错误码, 总之就是不再与此团队对战
-									#if rslt==False:
+									if rslt==False:
 										#pass
-										#logging.info("%s 挑战 %s 失败!",task_key,n)
-									#else:
+										logging.info("%s 挑战 %s 失败!",task_key,n)
+									else:
 										#pass
-										#logging.info("%s 挑战 %s 返回 %s",task_key,n,rslt)
+										logging.info("%s 挑战 %s 返回 %s",task_key,n,rslt)
 									break
 								elif rslt=='e2': # 战斗值不足
 									logging.info("%s 战斗值不足, 结束本轮战斗",task_key)
@@ -2659,8 +2706,8 @@ class Kaixin(object):
 							continue
 
 
-			except AttributeError:
-				logging.info("%s 解析战斗信息失败, 返回:\n%s",task_key,r[0].decode())
+			except AttributeError as e:
+				logging.info("%s 解析战斗信息失败, %s \n返回:\n%s",task_key,e,r[0].decode())
 				if self.checkLimitTip(r[0]):
 					break
 			finally:
@@ -2688,7 +2735,10 @@ class Kaixin(object):
 	
 		winorlose,exp,cash,combat,health=None,'0','0','0','0'
 
-		t=r[0].decode()
+		try:
+			t=r[0].decode()
+		except Exception as e:
+			logging.debug("解码返回结果出错：%s",e) # for debug only!!!
 		if len(t)==2:
 			winorlose=t
 		else:
@@ -2758,17 +2808,28 @@ import sys
 import shelve
 import imp
 from html.entities import name2codepoint
-import win32api
-import win32event
+try:
+  import win32api
+  import win32event
+except ImportError:
+  print('no win32api ?')
 import math
-import tkinter
+try:
+  import tkinter
+except ImportError:
+  print('no tkinter ?')
 from queue import Queue
 from queue import Empty
 from threading import Lock
 from threading import Condition
 from random import randint
 import subprocess
-import wingdbstub # 用于 wingide 调试
+try:
+  import wingdbstub # 用于 wingide 调试
+except ImportError:
+  print('no wingide debug support ?')
+import signal
+from logging.handlers import RotatingFileHandler
 if __name__=='__main__':
 ##	i=fakeKaixin()
 ##	i.run()
