@@ -291,6 +291,7 @@ class Kaixin(object):
 		self.verify=''
 
 		self.uid='' # 自己的uid
+		self.cafeid='' # cafe的id
 		self.cafeverify='' # 餐厅专用verify
 		# 
 		#  < webaccess_normal 正常  &&
@@ -317,6 +318,8 @@ class Kaixin(object):
 		self.consumepertime=500 # 餐台上积累多少菜时才开始给客人送菜
 		self.consumeerrcnt=50 # 送菜出错超过这个次数则停止送菜
 		self.event4cafe={} # 存放对应消费线程的事件信号
+		self.cafemana=0 # 大厨体力
+		self.semaphore4cafemana=Semaphore() # 同步对大厨体力值的访问
 
 		self.doagainevent=Event() # 等待触发X战斗的信号 目前没用
 		doagainevent=self.doagainevent
@@ -1022,6 +1025,7 @@ class Kaixin(object):
 					if self.monitorThreadExitEventHandle is not None:
 						win32event.SetEvent(self.monitorThreadExitEventHandle)
 					break
+				self.cafe_getChef(self.cafeid)
 ##				time.sleep(self.cfgData['internal'])
 		except KeyboardInterrupt:
 			logging.info("用户中断执行.")
@@ -1856,6 +1860,9 @@ class Kaixin(object):
 				cafewidth=tree.xpath('cafe/cafewidth')[0].text
 				cafeheight=tree.xpath('cafe/cafeheight')[0].text
 				logging.info("餐厅id=%s 魅力=%.1f 面积=%s×%s",cafeid,int(pvalue)/100.0,cafewidth,cafeheight)
+				self.cafeid=cafeid
+
+				self.cafe_getChef(self.cafeid)
 
 				# 餐台
 				logging.info("查看餐台...")
@@ -2149,23 +2156,33 @@ class Kaixin(object):
 			if not self.signed_in:
 				return False,None
 
+		bUseMana=False # 标识是否使用了大厨
 		for i in range(9):
 			if self.exitevent.is_set():
 				logging.info("检测到退出事件")
 				return False,None
 ##			logging.info("第 %d 次 ...",i+1)
+
+			with self.semaphore4cafemana:
+				#logging.debug("%s cafemana=%d",task_key,self.cafemana)
+				if self.cafemana>0: # 大厨有体力则自动做菜
+					urldata={'verify':self.cafeverify,
+						'cafeid':cafeid,
+						'orderid':orderid,
+						'dishid':dishid,
+						'auto':1, # 自动做菜（法国大厨？）
+						'rand':"%.16f"%(random(),)}
+					bUseMana=True
+				else:
+					urldata={'verify':self.cafeverify,
+						'cafeid':cafeid,
+						'orderid':orderid,
+						'dishid':dishid,
+						'rand':"%.16f"%(random(),)}
+					bUseMana=False
+
 			r = self.getResponse('http://www.kaixin001.com/cafe/api_cooking.php?%s'%
-				(urllib.parse.urlencode(
-				{'verify':self.cafeverify,
-##					'cafepp':'641538724',
-##					'flashid':'39111270734439',
-##					'cafepp':math.ceil(int(orderid)/100.0)*20,
-##			    'flashid':'13761270726925',
-					'cafeid':cafeid,
-					'orderid':orderid,
-					'dishid':dishid,
-					#'auto':1, # 自动做菜（法国大厨？）
-					'rand':"%.16f"%(random(),)}),),
+				(urllib.parse.urlencode(urldata),),
 				None)
 			try:
 				tree=etree.fromstring(r[0])
@@ -2182,6 +2199,11 @@ class Kaixin(object):
 				if self.checkLimitTip(r[0]):
 					continue
 			else:
+				if bUseMana:
+					with self.semaphore4cafemana:
+						self.cafemana-=1 # 大厨体力减少
+						logging.debug("%s cafemana=%d",task_key,self.cafemana)
+
 				if ret!='succ':
 ##					logging.info("===> %s 灶台 %s 上做菜失败(%s)!\n%s",
 ##						task_key,orderid,ret,etree.tostring(tree,encoding='gbk').decode('gbk'))
@@ -2785,6 +2807,48 @@ class Kaixin(object):
 		return False
 
 		
+
+	def cafe_getChef(self,cafeid,task_key=''):
+		'''获取大厨体力值'''
+		logging.debug("%s 查看餐厅 %s 的大厨状态...",task_key,cafeid)
+		for i in range(3):
+			if self.exitevent.is_set():
+				logging.info("%s 检测到退出事件",task_key)
+				break
+			# 清洗灶台
+			r = self.getResponse('http://www.kaixin001.com/cafe/api_autochef.php?%s'%
+				(urllib.parse.urlencode(
+					{'verify':self.cafeverify,'act':'0','cafeid':cafeid,'viewuid':self.uid,'rand':"%.16f"%(random(),)}),),
+				None)
+			try:
+				tree=etree.fromstring(r[0])
+			except etree.XMLSyntaxError as e:
+				logging.info("%s tree=etree.fromstring(r[0]) 出错!\n%s\n%s",task_key,e,r[0].decode('utf8'))
+				self.cafe_updateVerify()
+				continue
+
+	##		logging.debug("===> %s api_autochef返回: %s\n",task_key,etree.tostring(tree,encoding='gbk').decode('gbk'))
+			try:
+				orderid=tree.xpath('orderid')[0].text
+				leavetime=tree.xpath('leavetime')[0].text
+				status=tree.xpath('status')[0].text
+				cheftype=tree.xpath('cheftype')[0].text
+				mana=tree.xpath('mana')[0].text
+			except IndexError as e:
+				if r[0].decode().find("找不到大厨")!=-1:
+					logging.info("%s 没有大厨？",task_key)
+					break
+				else:
+					logging.info("%s 获取返回信息时发生异常!\n%s\n%s",task_key,e,etree.tostring(tree,encoding='gbk').decode('gbk'))
+				if self.checkLimitTip(r[0]):
+					break
+			else:
+				with self.semaphore4cafemana:
+					self.cafemana=int(mana)
+				logging.info("===> %s 大厨信息: orderid/leavetime/cheftype/status/mana: %s/%s/%s/%s/%s",task_key,orderid,leavetime,cheftype,status,mana)
+				return True
+
+		return False
 
 
 import logging
