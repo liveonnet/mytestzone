@@ -293,7 +293,7 @@ class Kaixin(object):
 		self.uid='' # 自己的uid
 		self.cafeid='' # cafe的id
 		self.cafeverify='' # 餐厅专用verify
-		# 
+		#
 		#  < webaccess_normal 正常  &&
 		#  < webaccess_lowfrq 低频  &&
 		#  被F5
@@ -388,6 +388,8 @@ class Kaixin(object):
 			if m:
 				logging.debug("登录成功! uid=%s .",m.group(1))
 				self.uid=m.group(1)
+				if self.uid not in self.cfgData['friends']:
+					self.cfgData['friends'][self.uid]='～自己～'
 				self.cj.save(self.cfgData['cookiefile'])
 				self.signed_in = True
 			else:
@@ -439,6 +441,8 @@ class Kaixin(object):
 			m=re.search(r'"我的开心网ID:(\d{5,10})"',r[0].decode())
 			if m:
 				self.uid=m.group(1)
+				if self.uid not in self.cfgData['friends']:
+					self.cfgData['friends'][self.uid]='～自己～'
 				logging.info("uid = %s",self.uid)
 
 	def getFriends4garden(self):
@@ -448,7 +452,7 @@ class Kaixin(object):
 		if self.signed_in:
 			del self.friends4garden[:]
 			if not self.house_updateVerify(
-					'http://www.kaixin001.com/!house/garden/index.php', 
+					'http://www.kaixin001.com/!house/garden/index.php',
 					'var g_verify = "(.+)";',False):
 				return
 
@@ -470,6 +474,7 @@ class Kaixin(object):
 				if fuid not in self.cfgData['friends']:
 					self.cfgData['friends'][fuid]=fname
 
+			self.friends4garden.append(('～自己～',self.uid))
 			#logging.info(u"self.friends4garden=%s",self.friends4garden)
 			#logging.info(u"self.cfgData['friends']=%s",self.cfgData['friends'])
 			#raw_input()
@@ -498,10 +503,17 @@ class Kaixin(object):
 			logging.info("花园检查 %02d) %s(%s)... ",cnt,fname,fuid)
 ##			r = self.getResponse('http://www.kaixin001.com/house/garden/getconf.php',
 ##				{'verify':self.verify,'fuid':fuid})
-			r = self.getResponse('http://www.kaixin001.com/!house/!garden//getconf.php?%s'%
-				(urllib.parse.urlencode(
-				{'verify':self.verify,'fuid':fuid,'r':"%.16f"%(random(),)}),),
-				None)
+			if fuid==self.uid: # 是自己
+				r = self.getResponse('http://www.kaixin001.com/!house/!garden//getconf.php?%s'%
+					(urllib.parse.urlencode(
+					{'verify':self.verify,'fuid':'0','r':"%.16f"%(random(),)}),),
+					None)
+			else:
+				r = self.getResponse('http://www.kaixin001.com/!house/!garden//getconf.php?%s'%
+					(urllib.parse.urlencode(
+					{'verify':self.verify,'fuid':fuid,'r':"%.16f"%(random(),)}),),
+					None)
+
 			try:
 				tree = etree.fromstring(r[0])
 			except etree.XMLSyntaxError as e:
@@ -540,7 +552,7 @@ class Kaixin(object):
 				crops=i.xpath('crops')[0].text
 				seedid=i.xpath('seedid')[0].text
 
-				if seedid in self.cfgData['ignoreseeds']:
+				if fuid!=self.uid and (seedid in self.cfgData['ignoreseeds']): # 不是自己且属于被忽略作物则略过
 ##					logging.debug("忽略地块 %s 的 %s(%s)",farmnum,name,seedid)
 					continue
 
@@ -594,7 +606,7 @@ class Kaixin(object):
 								if k not in self.tasklist: # 相同的任务不存在
 									# 判断是否存在同一块地不同seedid的任务，如果存在则先删除
 									samek='crop-%s-%s-'%(fuid,farmnum)
-									for i in self.tasklist.keys():
+									for i in self.tasklist:
 										if i.startswith(samek):
 											logging.info("终止并删除对同一块地的定时任务 key=%s",samek)
 											self.tasklist[i].cancel()
@@ -705,10 +717,16 @@ class Kaixin(object):
 
 		for _ in range(2):
 			logging.debug("<=== %s 从 %s(%s) 偷取 %s(farmnum=%s) ... ",tasklogstring,self.cfgData['friends'][fuid],fuid,[x for x in self.cfgData['seedlist'] if x[1]==seedid][0][2],farmnum)
-			r = self.getResponse('http://www.kaixin001.com/!house/!garden//havest.php?%s'%
-				(urllib.parse.urlencode(
-				{'farmnum':farmnum,'seedid':seedid,'fuid':fuid,'r':"%.16f"%(random(),),'confirm':'0'}),),
-				None,**kwargs)
+			if fuid==self.uid: # 是自己的花园
+				r = self.getResponse('http://www.kaixin001.com/!house/!garden//havest.php?%s'%
+					(urllib.parse.urlencode(
+					{'farmnum':farmnum,'seedid':'0','fuid':'0','r':"%.16f"%(random(),),'confirm':'0'}),),
+					None,**kwargs)
+			else:
+				r = self.getResponse('http://www.kaixin001.com/!house/!garden//havest.php?%s'%
+					(urllib.parse.urlencode(
+					{'farmnum':farmnum,'seedid':seedid,'fuid':fuid,'r':"%.16f"%(random(),),'confirm':'0'}),),
+					None,**kwargs)
 			tree = etree.fromstring(r[0])
 
 			try:
@@ -763,7 +781,7 @@ class Kaixin(object):
 			if not self.house_updateVerify(
 				'http://www.kaixin001.com/!house/ranch/index.php',
 				'var g_verify = "(.+)";',False):
-				return 
+				return
 
 			r = self.getResponse('http://www.kaixin001.com/!house/!ranch/friendlist.php')
 			data = json.loads(r[0].decode())
@@ -976,7 +994,7 @@ class Kaixin(object):
 			res_num=tree.xpath('num')[0].text
 			res_skey=tree.xpath('skey')[0].text
 			logging.debug("%s action=%s,num=%s,skey=%s,ptype=%s",tasklogstring,res_action,res_num,res_skey,res_ptype)
-			logging.info("===> %s *** 成功偷取 %s %s~",tasklogstring,res_num,self.cfgData['animallist'][res_skey][1])
+			logging.info("===> %s *** 成功偷取 %s(%s)的 %s %s",tasklogstring,self.cfgData['friends'][fuid],fuid,res_num,self.cfgData['animallist'][res_skey][1])
 			self.statistics[self.cfgData['animallist'][res_skey][1]]=self.statistics.get(self.cfgData['animallist'][res_skey][1],0)+int(res_num)
 		except IndexError:
 			logging.error("===> %s 解析结果失败!!! \n%s",tasklogstring,etree.tostring(tree,encoding='gbk').decode('gbk'))
@@ -1067,8 +1085,19 @@ class Kaixin(object):
 			time.sleep(1)
 
 	def getValueItems(self,threshold_value):
-		"""从l挑出价值大于 threshold_value 或者是强制偷取的 的 item 以列表形式返回"""
+		"""从l挑出价值大于 threshold_value 或者是强制偷取的 的 item 以列表形式返回。
+		对自己的花园作物不做处理。
+		"""
 		ret=[]
+		# 自己的花园作物不参与比较，先取出
+		my_crops2steal=[i for i in self.crops2steal if i[2]==self.uid ]
+		if my_crops2steal:
+			logging.info("自己的：%s",my_crops2steal)
+			self.crops2steal=[i for i in self.crops2steal if i[2]!=self.uid]
+			logging.info("其他的：%s",self.crops2steal)
+			
+
+
 		# 从seedlist中选出价值不低于threshold的seedid的列表
 		threshold_list=[i[1] for i in self.cfgData['seedlist'] if i[0]>=threshold_value]
 		# 将强制要偷的seedid加入
@@ -1082,6 +1111,12 @@ class Kaixin(object):
 		for i in threshold_list:
 			t=[item for item in self.crops2steal if item[1]==i]
 			ret+=t
+
+		# 将自己的花园作物原样放入结果
+		if my_crops2steal:
+			ret+=my_crops2steal
+			logging.info("过滤并合并后的：%s",ret)
+
 		return ret
 
 	def getGranaryInfo(self):
@@ -1537,7 +1572,7 @@ class Kaixin(object):
 				  name,num,selfnum,furid0,furid1,furid2,rank,price,bpresent,units,yili,advanced)
 
 				try:
-					k=[x for x in self.cfgData['animallist'].keys() if self.cfgData['animallist'][x][0]==int(i_id)][0]
+					k=[x for x in self.cfgData['animallist'] if self.cfgData['animallist'][x][0]==int(i_id)][0]
 					if k:
 						pass
 						#old_name=self.cfgData['animallist'][k][1]
@@ -1546,7 +1581,7 @@ class Kaixin(object):
 							#self.cfgData['animallist'][k][1]=name
 				except IndexError:
 					try:
-						k=[x for x in self.cfgData['animallist'].keys() if self.cfgData['animallist'][x][1]==name][0]
+						k=[x for x in self.cfgData['animallist'] if self.cfgData['animallist'][x][1]==name][0]
 						old=self.cfgData['animallist'][k][0]
 						self.cfgData['animallist'][k][0]=int(i_id)
 						logging.info("更新动物产品信息 key=%s [%d,%s] => [%d,%s]!",k,old,name,self.cfgData['animallist'][k][0],name)
@@ -2101,7 +2136,7 @@ class Kaixin(object):
 						if stage=='-1': # 尝试恢复坏菜
 							if self.cafe_recoverfood(cafeid,orderid,task_key):
 								self.cafe_dish2counter(cafeid,orderid,'xxxx',task_key)
-							
+
 						logging.debug("%s 灶台 %s 需要清洁(%s)",task_key,orderid,stage)
 						if self.cafe_stoveclean(cafeid,orderid,task_key):
 							ret=self.cafe_cooking(cafeid,orderid,self.cfgData['dish2cook'],task_key)
@@ -2474,7 +2509,7 @@ class Kaixin(object):
 				id=i.xpath('id')[0].text
 				ids.append(id)
 
-			ofnamebase=r'd:\gardenspirit\%s'%(time.strftime("%Y%m%d-%H%M%S"),)
+			ofnamebase=r'd:\gardenspirit\%s'%(datetime.datetime.now().strftime("%Y%m%d-%H%M%S%f"),)
 			for i in range(8):
 				# 获取问题图片
 				tpic=tree.xpath('tpic')[0].text
@@ -2491,7 +2526,7 @@ class Kaixin(object):
 			# 尝试识别
 			return self.garden_crackGardenSpirit(ofnamebase,ids)
 
-		return False 
+		return False
 
 
 	def garden_stealCrop(self):
@@ -2562,7 +2597,7 @@ class Kaixin(object):
 			except etree.XMLSyntaxError as e:
 				logging.debug("回答花园精灵 用返回数据构造tree时发生异常: %s\n%s",e,r[0].decode('utf-8'))
 				return
-					
+
 			ret=tree.xpath('ret')[0].text
 			if ret!='succ':
 				logging.info("回答花园精灵失败!(%s)\n%s",ret,r[0].decode('utf-8'))
@@ -2573,7 +2608,7 @@ class Kaixin(object):
 
 		return False
 
-				
+
 	def house_updateVerify(self,url,pattern,force=True,nolmtspd=True):
 		'''访问url用pattern找到verify并更新'''
 		logging.debug("更新verify, force=%s",force)
@@ -2608,7 +2643,7 @@ class Kaixin(object):
 
 		if cur> self.cfgData['webaccess_normal'] and cur<= self.cfgData['webaccess_lowfrq'] and self.curcookmode!=self.COOKMODE_LOWFRQ: # 低频模式
 			logging.info("接近低频阀值! 设置程序进入 低频模式...")
-			self.cfgData['dish2cook']=self.cfgData['dish2cook_lowfrq']  # 切换到做烹饪期稍长的菜的模式, 凉皮经验84收益168十分钟 
+			self.cfgData['dish2cook']=self.cfgData['dish2cook_lowfrq']  # 切换到做烹饪期稍长的菜的模式, 凉皮经验84收益168十分钟
 			self.cfgData['internal']=self.cfgData['internal']*2 # 延长花园和牧场检查时间
 			logging.info("低频模式: 做菜id=%s, 花园牧场检查间隔: %d",self.cfgData['dish2cook'],self.cfgData['internal'])
 			self.curcookmode=self.COOKMODE_LOWFRQ
@@ -2673,7 +2708,7 @@ class Kaixin(object):
 						self.spiderman_hospital(task_key)
 
 					m=re.search(pFightList,t) # 找团队列表
-					if m: 
+					if m:
 						fightlist=re.finditer(pEach,m.group(1))
 						for i in fightlist:
 							key,name,level,number=i.group('key'),i.group('name'),int(i.group('level')),int(i.group('number'))
@@ -2751,10 +2786,10 @@ class Kaixin(object):
 		cash 代表获得（0或正）或者失去的现金（负）
 		combat 代表战斗值改变（负）
 		health 代表生命值改变（0或者负）
-		''' 
+		'''
 		logging.debug("%s 和 %s 交战...",task_key,name)
 		r = self.getResponse('http://www.kaixin001.com/!spiderman/!ajax_fight.php',{'cid':2,'objid':key,'tmp':"%.16f"%(random(),)})
-	
+
 		winorlose,exp,cash,combat,health=None,'0','0','0','0'
 
 		try:
@@ -2806,7 +2841,7 @@ class Kaixin(object):
 
 		return False
 
-		
+
 
 	def cafe_getChef(self,cafeid,task_key=''):
 		'''获取大厨体力值'''
@@ -2873,15 +2908,15 @@ import shelve
 import imp
 from html.entities import name2codepoint
 try:
-  import win32api
-  import win32event
+	import win32api
+	import win32event
 except ImportError:
-  print('no win32api ?')
+	print('no win32api ?')
 import math
 try:
-  import tkinter
+	import tkinter
 except ImportError:
-  print('no tkinter ?')
+	print('no tkinter ?')
 from queue import Queue
 from queue import Empty
 from threading import Lock
@@ -2889,9 +2924,9 @@ from threading import Condition
 from random import randint
 import subprocess
 try:
-  import wingdbstub # 用于 wingide 调试
+	import wingdbstub # 用于 wingide 调试
 except ImportError:
-  print('no wingide debug support ?')
+	print('no wingide debug support ?')
 import signal
 from logging.handlers import RotatingFileHandler
 if __name__=='__main__':
