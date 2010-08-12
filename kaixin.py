@@ -229,6 +229,8 @@ class Kaixin(object):
 		logging.info("已知作物数 %d",len(self.cfgData['seedlist']))
 		#self.cfgData['seedlist'].sort(cmp=lambda x,y: cmp(x[0], y[0]),reverse=True)
 
+		self.cfgData['autofarm']=json.JSONDecoder().decode(self.cfg.get('account','autofarm'))
+
 		animallist=self.cfg.get('account','animallist')
 		self.cfgData['animallist']=json.JSONDecoder().decode(animallist)
 		logging.info("已知牧场产品数 %d",len(self.cfgData['animallist']))
@@ -272,6 +274,12 @@ class Kaixin(object):
 		logging.info("强制偷取的作物: %s",
 			' '.join(	( "%s(%s)"%(j,i) for i,j in ( (x[1],x[2]) for x in self.cfgData['seedlist'] if x[1] in self.cfgData['forcestealseeds'] ) ) )
 		)
+
+		# 打印自动播种作物
+		logging.info("自动播种作物: %s",
+			' '.join( ( "%s=%s(%s)"%(k,[x for x in self.cfgData['seedlist'] if x[1]==v][0][2],v) for k,v in self.cfgData['autofarm'].items() ) )
+		)
+
 
 		self.friends4garden=[] # 待检查garden的用户
 		self.friends4ranch=[] # 待检查ranch的用户
@@ -537,6 +545,12 @@ class Kaixin(object):
 					cropsstatus=i.xpath('cropsstatus')[0].text
 				except IndexError:
 ##					logging.debug("地块 %s 为空",farmnum)
+					status=i.xpath('status')[0].text
+					if status=='0':
+						pass
+##						logging.debug("地块 %s 尚未开发",farmnum)
+					elif fuid==self.uid: # 自己的地
+						self.garden_plan(farmnum)
 					continue
 
 				if cropsstatus=='-1':
@@ -544,6 +558,9 @@ class Kaixin(object):
 					continue
 				if cropsstatus=='3':
 ##					logging.debug("地块 %s 已经收获光未犁地",farmnum)
+					if fuid==self.uid: # 是自己
+						if self.garden_plough(farmnum):
+							self.garden_plan(farmnum)
 					continue
 
 ##				logging.debug("地块 %s cropsstatus=%s",farmnum,cropsstatus)
@@ -763,6 +780,10 @@ class Kaixin(object):
 					logging.debug("%s anti=%s,leftnum=%s,stealnum=%s,num=%s,seedname=%s",tasklogstring,anti,leftnum,stealnum,num,seedname)
 					logging.info("===> %s *** 成功偷取 %s(%s)的 %s %s",tasklogstring,self.cfgData['friends'][fuid],fuid,stealnum,seedname)
 					self.statistics[seedname]=self.statistics.get(seedname,0)+int(stealnum)
+
+					if fuid==self.uid: # 自己的花园
+						if self.garden_plough(farmnum):
+							self.garden_plan(farmnum)
 				except IndexError:
 					logging.error("===> %s 解析结果失败!!! \n%s",tasklogstring,etree.tostring(tree,encoding='gbk').decode('gbk'))
 					break
@@ -1095,7 +1116,7 @@ class Kaixin(object):
 			logging.info("自己的：%s",my_crops2steal)
 			self.crops2steal=[i for i in self.crops2steal if i[2]!=self.uid]
 			logging.info("其他的：%s",self.crops2steal)
-			
+
 
 
 		# 从seedlist中选出价值不低于threshold的seedid的列表
@@ -1486,7 +1507,7 @@ class Kaixin(object):
 ##				logging.debug("地块 %s 为枯死的作物",farmnum)
 ##				continue
 			if cropsstatus=='3':
-##				logging.debug("地块 %s 已经收获光未犁地",farmnum)
+#				logging.debug("地块 %s 已经收获光未犁地",farmnum)
 				continue
 
 			logging.info("地块 %s cropsstatus=%s",farmnum,cropsstatus)
@@ -2885,6 +2906,83 @@ class Kaixin(object):
 
 		return False
 
+
+	def garden_plough(self,farmnum,task_key=''):
+		'''犁地'''
+		logging.debug("%s 在地块 %s 犁地...",task_key,farmnum)
+		for _ in range(2):
+			r = self.getResponse('http://www.kaixin001.com/!house/!garden//plough.php?%s'%
+				(urllib.parse.urlencode(
+					{'fuid':'0','seedid':0,'farmnum':farmnum,'confirm':0,'r':"%.16f"%(random(),)}),),
+				None)
+
+			tree=etree.fromstring(r[0])
+			ret=tree.xpath('ret')[0].text
+			if ret!='succ':
+				logging.info("%s 在地块 %s 犁地出错(%s)\n%s",
+					task_key,farmnum,ret,etree.tostring(tree,encoding='gbk').decode('gbk'))
+				continue
+
+			try:
+				cashtips=tree.xpath('cashtips')[0].text
+			except IndexError:
+				logging.info("%s 地块 %s 犁地成功.",task_key,farmnum)
+				return True
+			else:
+				logging.info("%s 地块 %s 犁地成功, %s",task_key,farmnum,cashtips)
+				return True
+
+		return False
+
+	def garden_plan(self,farmnum,task_key=''):
+		'''播种'''
+		logging.debug("%s 在地块 %s 播种 ...",task_key,farmnum)
+		for _ in range(2):
+			r = self.getResponse('http://www.kaixin001.com/!house/!garden//farmseed.php?%s'%
+				(urllib.parse.urlencode(
+					{'fuid':'0','seedid':self.cfgData['autofarm'][farmnum],'farmnum':farmnum,'confirm':0,'r':"%.16f"%(random(),)}),),
+				None)
+
+			tree=etree.fromstring(r[0])
+			ret=tree.xpath('ret')[0].text
+			if ret!='succ':
+				logging.info("%s 地块 %s 播种 %s(%s) 出错(%s)\n%s",
+					task_key,farmnum,[x for x in self.cfgData['seedlist'] if x[1]==self.cfgData['autofarm'][farmnum]][0][2],self.cfgData['autofarm'][farmnum],ret,etree.tostring(tree,encoding='gbk').decode('gbk'))
+				if '已没有该种子了' in tree.xpath('reason')[0].text:
+					if self.garden_buyseed(self.cfgData['autofarm'][farmnum],1,task_key):
+						continue
+				else:
+					break
+
+			logging.info("%s 地块 %s 播种 %s(%s) 成功.",task_key,farmnum,[x for x in self.cfgData['seedlist'] if x[1]==self.cfgData['autofarm'][farmnum]][0][2],self.cfgData['autofarm'][farmnum])
+			return True
+
+		return False
+
+	def garden_buyseed(self,seedid,num,task_key=''):
+		'''买种子'''
+		logging.debug("%s 购买种子 %s 个 %s(%s)...",task_key,num,[x for x in self.cfgData['seedlist'] if x[1]==seedid][0][2],seedid)
+		for _ in range(2):
+			r = self.getResponse('http://www.kaixin001.com/!house/!garden/buyseed.php',
+					{'num':num,'verify':self.verify,'seedid':seedid})
+
+			tree=etree.fromstring(r[0])
+			ret=tree.xpath('ret')[0].text
+			if ret!='succ':
+				logging.info("%s 购买种子 %s 个 %s(%s) 出错(%s)\n%s",
+					task_key,num,[x for x in self.cfgData['seedlist'] if x[1]==seedid][0][2],seedid,ret,etree.tostring(tree,encoding='gbk').decode('gbk'))
+				continue
+
+			try:
+				change_cash_num=tree.xpath('change_cash_num')[0].text
+			except IndexError:
+				logging.info("%s 购买种子 %s 个 %s(%s) 成功.",task_key,num,[x for x in self.cfgData['seedlist'] if x[1]==seedid][0][2],seedid)
+				return True
+			else:
+				logging.info("%s 购买种子 %s 个 %s(%s) 成功, 现金 %s.",task_key,num,[x for x in self.cfgData['seedlist'] if x[1]==seedid][0][2],seedid,change_cash_num)
+				return True
+
+		return False
 
 import logging
 from lxml import etree
