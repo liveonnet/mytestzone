@@ -96,7 +96,8 @@ class MyPanelApp(object):
 			self.curpanel.pausePanel()
 			self.curpanel.stat=const.StatDisabled
 			self.curpanel.hide()
-		self.curpanel=self.panellist[self.vMode.get()]
+		self.c.cur_panel=self.vMode.get()
+		self.curpanel=self.panellist[self.c.cur_panel]
 		self.curpanel.show()
 		self.startShow()
 
@@ -133,6 +134,7 @@ class MyPanelApp(object):
 
 	def onQuit(self):
 		print('onQuit')
+		self.pauseShow(const.StatStopped)
 		self.cfg.set('account','total_panel',str(self.c.total_panel))
 		self.cfg.set('account','cur_panel',str(self.c.cur_panel))
 		for p in self.panellist:
