@@ -567,9 +567,10 @@ class Kaixin(object):
 
 				name=i.xpath('name')[0].text
 				crops=i.xpath('crops')[0].text
-				seedid=i.xpath('seedid')[0].text
+				seedid=i.xpath('seedid')[0].text # 变异后的种类
+				oriseedid=i.xpath('oriseedid')[0].text # 原种类
 
-				if fuid!=self.uid and (seedid in self.cfgData['ignoreseeds']): # 不是自己且属于被忽略作物则略过
+				if fuid!=self.uid and (oriseedid in self.cfgData['ignoreseeds']): # 不是自己且属于被忽略作物则略过
 ##					logging.debug("忽略地块 %s 的 %s(%s)",farmnum,name,seedid)
 					continue
 
@@ -635,7 +636,7 @@ class Kaixin(object):
 
 								logging.info("加入定时执行队列 key=%s %d (%s,%s,%s)",k,scd,farmnum,seedid,fuid)
 								if scd<60:
-									t=Timer(scd+0.1, self.stealOneCrop,(farmnum,seedid,fuid,k))
+									t=Timer(scd+0.1, self.stealOneCrop,(farmnum,seedid,oriseedid,fuid,k))
 								else:
 									t=Timer(scd, self.task_garden,(farmnum,seedid,fuid,k))
 								t.start()
@@ -643,7 +644,7 @@ class Kaixin(object):
 
 						elif left>1:
 							logging.info("%s(%s) (可偷) %d/%s (地块%s--%s(%s)--%s)",fname,fuid,left,all,farmnum,name,seedid,crops)
-							self.crops2steal.append((farmnum,seedid,fuid))
+							self.crops2steal.append((farmnum,seedid,oriseedid,fuid))
 					else:
 ##						logging.debug(u"地块 %s %s(%s) 已摘过(%s)",farmnum,name,seedid,crops)
 						pass
@@ -698,11 +699,11 @@ class Kaixin(object):
 		foundStramonium=False
 		seednamelist=[x[1] for x in self.cfgData['seedlist'] if x[2].find("曼陀罗")!=-1] # 叫曼陀罗的植物的seedid列表
 		toend=[] # 存放需要后移的曼陀罗
-		for farmnum,seedid,fuid in tosteal:
-			if seedid in seednamelist:
+		for farmnum,seedid,oriseedid,fuid in tosteal:
+			if oriseedid in seednamelist:
 				foundStramonium=True
-				logging.info("发现有曼陀罗 (%s,%s,%s)",farmnum,seedid,fuid)
-				toend.append((farmnum,seedid,fuid))
+				logging.info("发现有曼陀罗 (%s,%s<-%s,%s)",farmnum,seedid,oriseedid,fuid)
+				toend.append((farmnum,seedid,oriseedid,fuid))
 		if foundStramonium:
 			for i in toend:	tosteal.remove(i)
 			#for i in toend:	tosteal.append(i) # 注释掉以避免偷取曼陀罗类作物
@@ -711,8 +712,8 @@ class Kaixin(object):
 			#logging.info(u"found Stramonium\n%s",t.getvalue())
 			#t.close()
 
-		for idx,(farmnum,seedid,fuid) in enumerate(tosteal):
-			rslt=self.stealOneCrop(farmnum,seedid,fuid)
+		for idx,(farmnum,seedid,oriseedid,fuid) in enumerate(tosteal):
+			rslt=self.stealOneCrop(farmnum,seedid,oriseedid,fuid)
 			if rslt==False: # 被反外挂检测到
 				break
 ##			if idx!=len(tosteal)-1:
@@ -722,7 +723,7 @@ class Kaixin(object):
 
 		return True
 
-	def stealOneCrop(self,farmnum,seedid,fuid,taskkey='',**kwargs):
+	def stealOneCrop(self,farmnum,seedid,oriseedid,fuid,taskkey='',**kwargs):
 		"""偷取单一作物"""
 		tasklogstring=''
 		if taskkey!='':
@@ -765,7 +766,7 @@ class Kaixin(object):
 				if anti=='1':
 					logging.info("===> %s anti=1!!! 出现花园精灵! \n%s",tasklogstring,etree.tostring(tree,encoding='gbk').decode('gbk'))
 					if self.getGardenSpiritInfo(taskkey,fuid,**kwargs):
-						logging.info("回答花园精灵问题成功, 再次尝试偷取...")
+						logging.info("%s 回答花园精灵问题成功, 再次尝试偷取...",tasklogstring)
 						continue
 					else:
 						return False
@@ -777,13 +778,25 @@ class Kaixin(object):
 					stealnum=tree.xpath('stealnum')[0].text
 					num=tree.xpath('num')[0].text
 					seedname=tree.xpath('seedname')[0].text
-					logging.debug("%s anti=%s,leftnum=%s,stealnum=%s,num=%s,seedname=%s",tasklogstring,anti,leftnum,stealnum,num,seedname)
-					logging.info("===> %s *** 成功偷取 %s(%s)的 %s %s",tasklogstring,self.cfgData['friends'][fuid],fuid,stealnum,seedname)
-					self.statistics[seedname]=self.statistics.get(seedname,0)+int(stealnum)
+					#logging.debug("%s anti=%s,leftnum=%s,stealnum=%s,num=%s,seedname=%s",tasklogstring,anti,leftnum,stealnum,num,seedname)
+					if int(stealnum)!=0:
+						logging.info("===> %s *** 成功偷取 %s(%s)的 %s %s",tasklogstring,self.cfgData['friends'][fuid],fuid,stealnum,seedname)
+						self.statistics[seedname]=self.statistics.get(seedname,0)+int(stealnum)
+					elif fuid!=self.uid:
+						logging.error("%s 只偷取 %s 个 %s",tasklogstring,stealnum,seedname)
 
 					if fuid==self.uid: # 自己的花园
-						if self.garden_plough(farmnum):
-							self.garden_plan(farmnum)
+						try:
+							havestnum=tree.xpath('havestnum')[0].text
+						except IndexError:
+							logging.info("%s havestnum not found!",tasklogstring)
+							pass
+						else:
+							logging.info("%s 自家地块 %s 收获 %s %s",tasklogstring,farmnum,havestnum,seedname)
+							if int(leftnum)==0 and oriseedid!='248': # 硬编码世博花 糟糕但省事的实现 :)
+								if self.garden_plough(farmnum,taskkey):
+									self.garden_plan(farmnum,taskkey)
+
 				except IndexError:
 					logging.error("===> %s 解析结果失败!!! \n%s",tasklogstring,etree.tostring(tree,encoding='gbk').decode('gbk'))
 					break
@@ -1107,14 +1120,14 @@ class Kaixin(object):
 
 	def getValueItems(self,threshold_value):
 		"""从l挑出价值大于 threshold_value 或者是强制偷取的 的 item 以列表形式返回。
-		对自己的花园作物不做处理。
+		对自己的花园作物不做处理。以oriseed为基准比较（即只比较原种类而不比较变异后的种类）
 		"""
 		ret=[]
 		# 自己的花园作物不参与比较，先取出
-		my_crops2steal=[i for i in self.crops2steal if i[2]==self.uid ]
+		my_crops2steal=[i for i in self.crops2steal if i[3]==self.uid ]
 		if my_crops2steal:
 			logging.info("自己的：%s",my_crops2steal)
-			self.crops2steal=[i for i in self.crops2steal if i[2]!=self.uid]
+			self.crops2steal=[i for i in self.crops2steal if i[3]!=self.uid]
 			logging.info("其他的：%s",self.crops2steal)
 
 
@@ -1127,10 +1140,10 @@ class Kaixin(object):
 				threshold_list.append(i)
 
 		# 从上一步结果中选出包含在可偷列表中的seed
-		threshold_list=[x for x in threshold_list if x in [i[1] for i in self.crops2steal]]
+		threshold_list=[x for x in threshold_list if x in [i[2] for i in self.crops2steal]]
 
 		for i in threshold_list:
-			t=[item for item in self.crops2steal if item[1]==i]
+			t=[item for item in self.crops2steal if item[2]==i]
 			ret+=t
 
 		# 将自己的花园作物原样放入结果
@@ -1517,6 +1530,7 @@ class Kaixin(object):
 			seedid=i.xpath('seedid')[0].text
 			if seedid!=i_seedid:
 				logging.exception("%s 与预期的seedid不符! (%s!=%s)",task_key,seedid,i_seedid)
+			oriseedid=i.xpath('oriseedid')[0].text
 
 			# 检查seedid是否是未知的
 			if seedid not in [x[1] for x in self.cfgData['seedlist']]: # 未知
@@ -1543,7 +1557,7 @@ class Kaixin(object):
 							return
 
 						#logging.info(u"(可偷) %d/%s (%s--%s--%s--%s)",left,all,farmnum,seedid,name,crops)
-						rslt=self.stealOneCrop(farmnum,seedid,i_fuid,task_key,nolimitspeed=True)
+						rslt=self.stealOneCrop(farmnum,seedid,oriseedid,i_fuid,task_key,nolimitspeed=True)
 			return
 
 	def getRanchFruitInfo(self,i_type,i_id):
@@ -2909,7 +2923,7 @@ class Kaixin(object):
 
 	def garden_plough(self,farmnum,task_key=''):
 		'''犁地'''
-		logging.debug("%s 在地块 %s 犁地...",task_key,farmnum)
+		logging.debug("%s 在自家地块 %s 犁地...",task_key,farmnum)
 		for _ in range(2):
 			r = self.getResponse('http://www.kaixin001.com/!house/!garden//plough.php?%s'%
 				(urllib.parse.urlencode(
@@ -2919,24 +2933,24 @@ class Kaixin(object):
 			tree=etree.fromstring(r[0])
 			ret=tree.xpath('ret')[0].text
 			if ret!='succ':
-				logging.info("%s 在地块 %s 犁地出错(%s)\n%s",
+				logging.info("%s 在自家地块 %s 犁地出错(%s)\n%s",
 					task_key,farmnum,ret,etree.tostring(tree,encoding='gbk').decode('gbk'))
 				continue
 
 			try:
 				cashtips=tree.xpath('cashtips')[0].text
 			except IndexError:
-				logging.info("%s 地块 %s 犁地成功.",task_key,farmnum)
+				logging.info("%s 自家地块 %s 犁地成功.",task_key,farmnum)
 				return True
 			else:
-				logging.info("%s 地块 %s 犁地成功, %s",task_key,farmnum,cashtips)
+				logging.info("%s 自家地块 %s 犁地成功, %s",task_key,farmnum,cashtips)
 				return True
 
 		return False
 
 	def garden_plan(self,farmnum,task_key=''):
 		'''播种'''
-		logging.debug("%s 在地块 %s 播种 ...",task_key,farmnum)
+		logging.debug("%s 在自家地块 %s 播种 ...",task_key,farmnum)
 		for _ in range(2):
 			r = self.getResponse('http://www.kaixin001.com/!house/!garden//farmseed.php?%s'%
 				(urllib.parse.urlencode(
@@ -2946,7 +2960,7 @@ class Kaixin(object):
 			tree=etree.fromstring(r[0])
 			ret=tree.xpath('ret')[0].text
 			if ret!='succ':
-				logging.info("%s 地块 %s 播种 %s(%s) 出错(%s)\n%s",
+				logging.info("%s 自家地块 %s 播种 %s(%s) 出错(%s)\n%s",
 					task_key,farmnum,[x for x in self.cfgData['seedlist'] if x[1]==self.cfgData['autofarm'][farmnum]][0][2],self.cfgData['autofarm'][farmnum],ret,etree.tostring(tree,encoding='gbk').decode('gbk'))
 				if '已没有该种子了' in tree.xpath('reason')[0].text:
 					if self.garden_buyseed(self.cfgData['autofarm'][farmnum],1,task_key):
@@ -2954,7 +2968,7 @@ class Kaixin(object):
 				else:
 					break
 
-			logging.info("%s 地块 %s 播种 %s(%s) 成功.",task_key,farmnum,[x for x in self.cfgData['seedlist'] if x[1]==self.cfgData['autofarm'][farmnum]][0][2],self.cfgData['autofarm'][farmnum])
+			logging.info("%s 自家地块 %s 播种 %s(%s) 成功.",task_key,farmnum,[x for x in self.cfgData['seedlist'] if x[1]==self.cfgData['autofarm'][farmnum]][0][2],self.cfgData['autofarm'][farmnum])
 			return True
 
 		return False
