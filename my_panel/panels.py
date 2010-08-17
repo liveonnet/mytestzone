@@ -14,6 +14,7 @@ from util.HyperlinkManager import HyperlinkManager
 import tkinter.colorchooser as tkColorChooser
 import util.const as const
 from util.Cfg import Cfg
+from util.AutoComplete import AutoComplete
 from contentcontainer import WordFile
 from contentcontainer import SubtitleFile
 
@@ -27,12 +28,92 @@ class BasePanel(object):
 		self.menu=None # 本panel的菜单
 		self.cur_list_menu=None # 显示当前的 文件/源/字典 列表
 		self.recent_list_menu=None # 显示最近的 文件/源/字典 列表
+		self.draggableCtrl=None # 可用于拖放的widget
 		self.c=Cfg()
 
 		self.tooltiptext=None
-		self.curgeometry=None
 		self.stat=None
 
+		# 处理窗口拖动
+		self.InDrag=False
+		self.oldxy=[0,0]
+		self.curgeometry=[320,240]
+		self.offsetx,self.offsety=0,0 # 被拖动的widget距离(top,left)的值
+
+	def bindLeftMouse(self):
+		self.logger.info('bind leftmouse')
+		self.draggableCtrl.bind('<ButtonPress-1>', self.onLeftMouse)
+		self.draggableCtrl.bind('<ButtonRelease-1>',self.onLeftMouse)
+		self.draggableCtrl.bind('<Motion>',self.onLeftMouse)
+		self.draggableCtrl.bind('<Leave>',self.onLeftMouse)
+		self.draggableCtrl.bind('<Enter>',self.onLeftMouse)
+
+	def bindLeftMouseDbClick(self):
+		self.logger.info('bind leftmouse db click')
+		self.draggableCtrl.bind('<Double-Button-1>',self.onLeftMouseDbClick)
+
+	def unbindLeftMouse(self):
+		self.logger.info('unbind leftmouse')
+		self.draggableCtrl.unbind('<ButtonPress-1>')
+		self.draggableCtrl.unbind('<ButtonRelease-1>')
+		self.draggableCtrl.unbind('<Motion>')
+		self.draggableCtrl.unbind('<Leave>')
+		self.draggableCtrl.unbind('<Enter>')
+##		self.draggableCtrl.unbind('<ButtonPress-1>', self.onLeftMouse)
+##		self.draggableCtrl.unbind('<ButtonRelease-1>',self.onLeftMouse)
+##		self.draggableCtrl.unbind('<Motion>',self.onLeftMouse)
+##		self.draggableCtrl.unbind('<Leave>',self.onLeftMouse)
+##		self.draggableCtrl.unbind('<Enter>',self.onLeftMouse)
+
+	def unbindLeftMouseDbClick(self):
+		self.logger.info('unbind leftmouse db click')
+##		self.draggableCtrl.unbind('<Double-Button-1>',self.onLeftMouseDbClick)
+		self.draggableCtrl.unbind('<Double-Button-1>')
+
+	def onLeftMouse(self,event):
+		'''处理窗体拖放、内容暂停/恢复'''
+		if event.type=='6': # Motion
+			if self.InDrag:
+##				self.logger.info('offsetxy=(%d,%d)',self.offsetx,self.offsety)
+				xmvto=event.x_root-self.oldxy[0]-self.offsetx
+				ymvto=event.y_root-self.oldxy[1]-self.offsety
+##				print('Motion at (%d,%d) +%d+%d'%(event.x,event.y,xmvto,ymvto))
+				self.root.geometry('%dx%d+%d+%d'%(self.curgeometry[0],self.curgeometry[1],
+					xmvto,ymvto))
+		elif event.type=='7': # Enter
+			self.root.attributes("-alpha", 1) # use transparency level 0.1 to 1.0 (no transparency)
+			if self.stat==const.StatPlaying:
+				print('StatPlaying->StatPaused4Hover')
+				self.pausePanel(const.StatPaused4Hover)
+		elif event.type=='8': # Leave
+			self.root.attributes("-alpha", self.c.alpha) # use transparency level 0.1 to 1.0 (no transparency)
+			if not self.InDrag and self.stat==const.StatPaused4Hover:
+				print('StatPaused4Hover->StatPlaying')
+				self.updatePanel()
+		elif event.type=='4': # ButtonPress
+			if not self.InDrag:
+				print('ButtonPress at (%d,%d)-(%dx%d)'%(event.x,event.y,event.x_root,event.y_root))
+				self.InDrag=True
+				self.oldxy=[event.x,event.y]
+		elif event.type=='5': # ButtonRelease
+			if self.InDrag:
+##				print('ButtonRelease at (%d,%d)'%(event.x,event.y))
+				self.InDrag=False
+		else:
+			print(event.type)
+			print('in onLeftMouse (%d,%d)'%(event.x,event.y))
+
+	def onLeftMouseDbClick(self,event):
+		'''暂停/继续'''
+		if self.stat in (const.StatPlaying,const.StatPaused4Hover):
+			print('StatPlaying or StatPaused4Hover ->StatPaused')
+			self.pausePanel(const.StatPaused)
+		elif self.stat==const.StatPaused:
+			print('StatPaused->StatPlaying')
+			self.updatePanel()
+		elif self.stat==const.StatStopped:
+			print('StatStopped->StatPlaying')
+			self.updatePanel()
 
 	def loadCfg(self,cfg,section=None):
 		if not section:
@@ -62,17 +143,11 @@ class BasePanel(object):
 		cfg.set(section,'bg',str(self.c.bg))
 		cfg.set(section,'recent',json.JSONEncoder(ensure_ascii =False,separators=(',', ':')).encode(self.c.recent).replace(',[',',\n['))
 
-	def pausePanel(self):
-		pass
+	def pausePanel(self,new_stat):
+		self.stat=new_stat
 
 	def updatePanel(self):
-		pass
-
-	def onLeftMouse(self,event):
-		if event.type=='7': # Enter
-			self.root.attributes("-alpha", 1)
-		elif event.type=='8': # Leave
-			self.root.attributes("-alpha", self.c.alpha)
+		self.stat=const.StatPlaying
 
 	def createMenu(self,mainmenu):
 		pass
@@ -81,6 +156,7 @@ class BasePanel(object):
 		pass
 
 	def show(self):
+		self.root.attributes("-alpha", self.c.alpha) # use transparency level 0.1 to 1.0 (no transparency)
 		pass
 
 class RecitePanel(BasePanel):
@@ -94,22 +170,25 @@ class RecitePanel(BasePanel):
 		ft = tkFont.Font(family = 'Fixdsys',size = 20,weight = tkFont.BOLD)
 		self.label=tkinter.Label(self.root,font=ft,relief='ridge',anchor='center',textvariable=self.sText)
 		self.label.pack(expand=True,fill=tkinter.BOTH)
+		self.draggableCtrl=self.label
 
 		# 设置tooltip
 		self.tooltiptext=tkinter.StringVar()
 		ft = tkFont.Font(family = 'Fixdsys',size = 12,weight = tkFont.BOLD)
 		self.tt=ToolTip(self.label,follow_mouse=0,font=ft,wraplength=self.root.winfo_screenwidth()/3,textvariable=self.tooltiptext)
 
-		self.label.bind('<Leave>',self.onLeftMouse,'+')
-		self.label.bind('<Enter>',self.onLeftMouse,'+')
+##		self.label.bind('<Leave>',self.onLeftMouse,'+')
+##		self.label.bind('<Enter>',self.onLeftMouse,'+')
 
 
 	def show(self):
+		BasePanel.show(self)
 		self.curgeometry=[self.label.winfo_reqwidth(),self.label.winfo_reqheight()]
 		self.label.pack(expand=True,fill=tkinter.BOTH)
 		self.root.geometry('%dx%d'%(self.curgeometry[0],self.curgeometry[1]))
 
 	def hide(self):
+		BasePanel.hide(self)
 		self.label.pack_forget()
 
 	def loadCfg(self,cfg,section):
@@ -162,8 +241,8 @@ class RecitePanel(BasePanel):
 			self.c.file[self.c.cur][1]=self.content.getIdx()
 			self.timerid=self.label.after(self.c.interval,self.updatePanel)
 
-	def pausePanel(self):
-		BasePanel.pausePanel(self)
+	def pausePanel(self,new_stat):
+		BasePanel.pausePanel(self,new_stat)
 		if self.timerid:
 			self.label.after_cancel(self.timerid)
 			self.timerid=None
@@ -308,21 +387,24 @@ class SubtitlePanel(BasePanel):
 ##		print('=%d'%(self.text.winfo_reqheight(),))
 		self.text.insert(tkinter.INSERT,'MyPanel v0.1 powered by Python~')
 		self.text.pack(expand=True,fill=tkinter.BOTH)
+		self.draggableCtrl=self.text
 
 		# 设置tooltip
 		self.tooltiptext=tkinter.StringVar()
 		ft = tkFont.Font(family = 'Fixdsys',size = 12,weight = tkFont.BOLD)
 		self.tt=ToolTip(self.text,follow_mouse=0,font=ft,wraplength=self.root.winfo_screenwidth()/3,textvariable=self.tooltiptext)
 
-		self.text.bind('<Leave>',self.onLeftMouse,'+')
-		self.text.bind('<Enter>',self.onLeftMouse,'+')
+##		self.text.bind('<Leave>',self.onLeftMouse,'+')
+##		self.text.bind('<Enter>',self.onLeftMouse,'+')
 
 	def show(self):
+		BasePanel.show(self)
 		self.curgeometry=[self.text.winfo_reqwidth(),self.text.winfo_reqheight()]
 		self.text.pack(expand=True,fill=tkinter.BOTH)
 		self.root.geometry('%dx%d'%(self.curgeometry[0],self.curgeometry[1]))
 
 	def hide(self):
+		BasePanel.hide(self)
 		self.text.pack_forget()
 
 	def loadCfg(self,cfg,section):
@@ -402,8 +484,8 @@ class SubtitlePanel(BasePanel):
 			self.c.file[self.c.cur][1]=self.content.getIdx()
 			self.timerid=self.text.after(self.c.interval,self.updatePanel)
 
-	def pausePanel(self):
-		BasePanel.pausePanel(self)
+	def pausePanel(self,new_stat):
+		BasePanel.pausePanel(self,new_stat)
 		if self.timerid:
 			self.text.after_cancel(self.timerid)
 			self.timerid=None
@@ -556,57 +638,37 @@ class DictionaryPanel(BasePanel):
 	def __init__(self,name,section,root):
 		BasePanel.__init__(self,name,section,root)
 		self.vInput=tkinter.StringVar()
-		self.container=tkinter.Frame(root,bd=5,padx=2,pady=2,relief=tkinter.RIDGE)
-		self.ft = tkFont.Font(family = 'Fixdsys',size = 12,weight = tkFont.BOLD)
+		self.container=tkinter.Frame(root,bd=0,padx=0,pady=0,relief=tkinter.RIDGE)
+		self.ft = tkFont.Font(family = 'Fixdsys',size = 15,weight = tkFont.BOLD)
 
-		self.btnClear=tkinter.Button(self.container,padx=5,pady=5,text='clear')
-		self.btnClear.grid(row=0,column=0,columnspan=2,sticky=tkinter.NSEW)
+		self.labelInput=tkinter.Label(self.container,font=self.ft,text='word: ')
+		self.labelInput.grid(row=0,column=0,padx=0,pady=0,sticky=tkinter.EW)
+##		self.draggableCtrl=self.labelInput
+##		self.offsetx,self.offsety=5+2+2,5+2+2
+		self.draggableCtrl=self.container
+		self.offsetx,self.offsety=0,0
 
-		self.entryInput=tkinter.Entry(self.container,font=self.ft,bd=2,textvariable=self.vInput)
-		self.entryInput.grid(row=0,column=2,columnspan=3,sticky=tkinter.NSEW)
+		self.entryInput=tkinter.Entry(self.container,font=self.ft,bd=0,textvariable=self.vInput)
+		self.ac=AutoComplete(self.entryInput,open(r'd:\onlyword.txt').readlines()) # 自动完成
+		self.entryInput.grid(row=0,column=1,columnspan=1,sticky=tkinter.EW)
 
-		f=tkinter.Frame(self.container)
-		self.btnSearch=tkinter.Button(f,padx=5,pady=5,text='query')
-##		self.btnSearch.grid(row=0,column=3,columnspan=1,sticky=tkinter.W)
-		self.btnSearch.pack(side=tkinter.LEFT,expand=False,fill=tkinter.BOTH)
+		self.btnSearch=tkinter.Button(self.container,padx=0,pady=0,relief=tkinter.FLAT,overrelief=tkinter.RAISED,text='query')
+		self.btnSearch.grid(row=0,column=2,sticky=tkinter.NSEW)
 
-		self.btnSave=tkinter.Button(f,padx=5,pady=5,text='save')
-##		self.btnSave.grid(row=0,column=4,columnspan=1,sticky=tkinter.W)
-		self.btnSave.pack(side=tkinter.LEFT,expand=False,fill=tkinter.BOTH)
-
-		f.grid(row=0,column=5,columnspan=2,sticky=tkinter.EW)
-
-		f=tkinter.Frame(self.container)
-		self.btnFile=[]
-		for i in range(2):
-			self.btnFile.append(tkinter.Button(f,padx=5,pady=5,text='file-%d'%(i,)))
-##			self.btnFile[-1].grid(row=i+1,rowspan=1,column=0,columnspan=1,sticky=tkinter.NS)
-			self.btnFile[-1].pack(side=tkinter.TOP,expand=False,fill=tkinter.BOTH)
-		f.grid(row=1,column=0,columnspan=1,sticky=tkinter.NS)
-
-
-		self.listWords=tkinter.Listbox(self.container)
-		self.listWords.grid(row=1,rowspan=1,column=1,columnspan=2,sticky=tkinter.NSEW)
-		scroll = tkinter.Scrollbar(self.container, command=self.listWords.yview)
-		self.listWords.configure(yscrollcommand=scroll.set)
-		scroll.grid(row=1,column=3,sticky=tkinter.NS)
-
-		self.textExplain=tkinter.Text(self.container)
-		self.textExplain.grid(row=1,rowspan=1,column=4,columnspan=2,sticky=tkinter.NSEW)
-		scroll = tkinter.Scrollbar(self.container, command=self.textExplain.yview)
-		self.textExplain.configure(yscrollcommand=scroll.set)
-		scroll.grid(row=1,column=6,sticky=tkinter.NS)
-
-##		self.container.columnconfigure(3,weight=1)
-##		self.container.columnconfigure(4,weight=1)
-##		self.container.columnconfigure(5,weight=1)
-##		self.container.rowconfigure(0,weight=1)
-##		self.container.rowconfigure(1,weight=1)
+		self.btnSave=tkinter.Button(self.container,padx=0,pady=0,relief=tkinter.FLAT,overrelief=tkinter.RAISED,text='save')
+		self.btnSave.grid(row=0,column=3,sticky=tkinter.NSEW)
 
 		self.container.pack(expand=True,fill=tkinter.BOTH)
 
-		self.container.bind('<Leave>',self.onLeftMouse,'+')
-		self.container.bind('<Enter>',self.onLeftMouse,'+')
+		# 通过 label 处理拖动
+		self.labelInput.bind('<ButtonPress-1>', self.onLeftMouse,'+')
+		self.labelInput.bind('<ButtonRelease-1>',self.onLeftMouse,'+')
+		self.labelInput.bind('<Motion>',self.onLeftMouse,'+')
+
+	def onLeftMouse(self,event):
+		BasePanel.onLeftMouse(self,event)
+		if self.InDrag and self.ac.active:
+			self.ac.DestroyGUI()
 
 	def loadCfg(self,cfg,section):
 		BasePanel.loadCfg(self,cfg,section)
@@ -618,27 +680,45 @@ class DictionaryPanel(BasePanel):
 	def applyCfg(self):
 		BasePanel.applyCfg(self)
 		self.container.configure(bg=self.c.bg)
+		self.labelInput.configure(bg=self.c.bg)
+		self.btnSearch.configure(bg=self.c.bg)
+		self.btnSave.configure(bg=self.c.bg)
 
 	def createMenu(self,mainmenu):
 		BasePanel.createMenu(self,mainmenu)
 
 	def show(self):
+		BasePanel.show(self)
 		self.vInput.set('input word here:')
 		self.entryInput.select_range(0,tkinter.END)
-		self.curgeometry=[self.container.winfo_reqwidth(),self.container.winfo_reqheight()]
+		self.entryInput.icursor(tkinter.END)
+		self.entryInput.focus_force()
+		w=self.labelInput.winfo_reqwidth()+self.entryInput.winfo_reqwidth()\
+			+self.btnSearch.winfo_reqwidth()+self.btnSave.winfo_reqwidth()#+(5+2)*2
+		h=max(self.labelInput.winfo_reqheight(),self.entryInput.winfo_reqheight(),
+				self.btnSearch.winfo_reqheight(),self.btnSave.winfo_reqheight())#+(5+2)*2
+##		self.curgeometry=[self.container.winfo_reqwidth(),self.container.winfo_reqheight()]
+		self.curgeometry=[w,h]
 		self.logger.info('crgeometry=%dx%d',*self.curgeometry)
-		self.logger.info('input=%dx%d,btn=%dx%d,list=%dx%d,text=%dx%d',
+		self.logger.info('input=%dx%d,btn=%dx%d',
 			self.entryInput.winfo_reqwidth(),self.entryInput.winfo_reqheight(),
-			self.btnSearch.winfo_reqwidth(),self.btnSearch.winfo_reqheight(),
-			self.listWords.winfo_reqwidth(),self.listWords.winfo_reqheight(),
-			self.textExplain.winfo_reqwidth(),self.textExplain.winfo_reqheight())
+			self.btnSearch.winfo_reqwidth(),self.btnSearch.winfo_reqheight())
 ##		self.container.pack(expand=True,fill=tkinter.BOTH)
 		self.logger.info('grid_size=%dx%d',*self.container.grid_size())
 		self.logger.info('contaner=%dx%d',self.container.winfo_reqwidth(),self.container.winfo_reqheight())
 		self.logger.info('w.grid_info()=%s',self.container.grid_info())
 ##		self.logger.info('root=%dx%d',self.root.winfo_reqwidth(),self.root.winfo_reqheight())
-##		self.root.geometry('%dx%d'%(self.curgeometry[0],self.curgeometry[1]))
+
+		self.container.pack(expand=True,fill=tkinter.BOTH)
+		self.root.geometry('%dx%d'%(self.curgeometry[0],self.curgeometry[1]))
 ##		self.container.geometry('%dx%d'%(640,480))
 
 	def hide(self):
+		BasePanel.hide(self)
 		self.container.pack_forget()
+
+	def updatePanel(self):
+		BasePanel.updatePanel(self)
+
+	def pausePanel(self,new_stat):
+		BasePanel.pausePanel(self,new_stat)
