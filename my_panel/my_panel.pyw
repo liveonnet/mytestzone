@@ -21,8 +21,14 @@ import logging.config
 import json
 import re
 
-# TODO: 各panel建立自己的菜单,文件输入支持gzip
+# TODO: 各panel建立自己的菜单,
 # 支持Drag & Drop: http://sourceforge.net/projects/tkdnd/
+# 文件输入支持gzip
+# dictionarypanel中正确计算texttip的位置和大小（包括拖放panel时的跟随or消失？），texttip消失的时机
+# 正确显示音标
+# 增加读取大字典idx文件的速度
+# 查询结果根据内容智能分行(*开头.结尾)的可行性试验
+# 切换不同字典时对当前suggestlist的设置是否正确？
 
 const.StatPlaying,const.StatStopped,const.StatPaused,const.StatPaused4Hover,const.StatDisabled=range(5)
 

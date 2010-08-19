@@ -15,8 +15,8 @@ import tkinter.font as tkFont
 import logging
 
 class AutoComplete(object):
-	def __init__(self, win,suggestlist=None):
-		self.logger=logging.getLogger('atcmplt')
+	def __init__(self, win,callbackfunc,suggestlist=None):
+		self.logger=logging.getLogger(self.__class__.__name__)
 		self.win = win
 		self.active = False
 		self.record = '' # 当前字符串
@@ -32,31 +32,38 @@ class AutoComplete(object):
 		self.suggestlist=suggestlist
 
 		if not self.suggestlist:
-			raise Exception('没有用于自动完成的数据!')
+			self.logger.info('没有用于自动完成的数据!')
+		else:
+			self.prepareData()
 
+		self.cbFunc=callbackfunc # 回调函数
 
-		# 保存将两字符起始索引，用于优化
+	def prepareData(self):
+		# 保存两字符起始、结束索引，用于优化
 		self.quickIdx={}
 		tmp=0
+		pre_k=''
 		for k,g in itertools.groupby(self.suggestlist,key=lambda x:x[:2]):
-			self.quickIdx[k]=tmp
+			if pre_k:
+				self.quickIdx[pre_k].append(tmp)
+			self.quickIdx[k]=[tmp,]
 			tmp+=len(list(g))
-		self.logger.info('total %d block')
+			pre_k=k
+		if pre_k:
+			self.quickIdx[pre_k].append(tmp)
+		self.logger.info('total %d block',len(self.quickIdx))
 
 
 	def FilterInput(self):
+		if not self.suggestlist:
+			return
 		# 初步优化
 		if len(self.record)==2:
 			try:
-				self.blkidx=self.quickIdx[self.record] # 起始索引
+				self.blkidx,self.blkendidx=self.quickIdx[self.record] # 起始，结束索引
 			except KeyError:
 				return
 			else:
-				# 获取结束索引
-				try:
-					self.blkendidx=min((x for x in self.quickIdx.values() if x>self.blkidx))
-				except ValueError:
-					self.blkendidx=len(self.suggestlist)
 				self.logger.debug('blkendidx=%d',self.blkendidx)
 				self.logger.debug('set [%d,%d) through quickIdx for %s',self.blkidx,self.blkendidx,self.record)
 				self.listbox.delete(0,tkinter.END) # 先清空
@@ -75,7 +82,7 @@ class AutoComplete(object):
 			self.logger.debug('%s 以最近查找失败的串 %s 为起始串,不查找',self.record,self.recent_fail)
 			return
 
-		p=re.compile("^%s[a-zA-Z0-9|\-|\.]*"%(self.record,))
+		p=re.compile("^%s[a-zA-Z0-9|\-|\.| ]*"%(self.record,))
 		for i,w in enumerate(self.suggestlist[self.blkidx:self.blkendidx]):
 			if re.match(p,w):
 				self.listbox.selection_clear(self.listbox.curselection()[0])
@@ -90,7 +97,7 @@ class AutoComplete(object):
 			record=self.record[:]
 			while len(record)>2:
 				record=record[:-1]
-				p=re.compile("^%s[a-zA-Z0-9|\-|\.]*"%(record,))
+				p=re.compile("^%s[a-zA-Z0-9|\-|\.| ]*"%(record,))
 				for i,w in enumerate(self.suggestlist[self.blkidx:self.blkendidx]):
 					if re.match(p,w):
 						self.listbox.selection_clear(self.listbox.curselection()[0])
@@ -104,9 +111,11 @@ class AutoComplete(object):
 			self.recent_fail=self.record[:]
 
 	def onKeyRelease(self, event):
+		if not self.suggestlist:
+			return
 		key = event.char
 		self.record=self.win.get()
-		if re.match("[a-zA-Z0-9|\-|\.]", key):
+		if re.match("[a-zA-Z0-9|\-|\.| ]", key):
 			if not self.active and len(self.record)>1:
 				self.MakeGUI()
 			elif self.active:
@@ -124,6 +133,7 @@ class AutoComplete(object):
 				self.win.delete(0,tkinter.END)
 				self.win.insert(tkinter.INSERT, self.listbox.get(self.listbox.curselection()[0]))
 				self.DestroyGUI()
+				self.cbFunc()
 		elif event.keysym in ("Up","Down","Next","Prior","Shift_R", "Shift_L",
 			"Control_L", "Control_R", "Alt_L",
 			"Alt_R", "parenleft", "parenright"):
@@ -133,7 +143,7 @@ class AutoComplete(object):
 				self.DestroyGUI()
 
 	def onKeyPress(self,event):
-		if not self.active:
+		if not self.suggestlist or not self.active:
 			return
 		if event.keysym =="Down":
 			idx=int(self.listbox.curselection()[0])
@@ -168,6 +178,8 @@ class AutoComplete(object):
 			self.DestroyGUI()
 
 	def onDbClick(self, event):
+		if not self.suggestlist:
+			return
 		self.win.delete(0,tkinter.END)
 		self.win.insert(tkinter.INSERT, self.listbox.get(self.listbox.curselection()[0]))
 		self.DestroyGUI()
@@ -181,14 +193,14 @@ class AutoComplete(object):
 		tl.wm_overrideredirect(1)
 		tl.wm_geometry("+%d+%d" % (x, y))
 		form = tkinter.Frame(tl, highlightthickness=0)
-		form.pack(fill="both", expand="yes")
+		form.pack(fill=tkinter.BOTH, expand=tkinter.YES)
 		sb = tkinter.Scrollbar(form, highlightthickness=0)
-		sb.pack(side="right", fill="y")
+		sb.pack(side=tkinter.RIGHT, fill=tkinter.BOTH)
 		ft = tkFont.Font(family = 'Fixdsys',size = 12)
-		self.listbox = tkinter.Listbox(form, font=ft,highlightthickness=0,relief="flat",
+		self.listbox = tkinter.Listbox(form, font=ft,highlightthickness=0,relief=tkinter.FLAT,
 			yscrollcommand=sb.set, height=10,listvariable=self.listcontent)
 		self.listbox.selection_set(0)
-		self.listbox.pack(side="left", fill="both")
+		self.listbox.pack(side=tkinter.LEFT, fill=tkinter.BOTH)
 		sb.config(command=self.listbox.yview)
 ##        self.listbox.focus()
 		self.win.bind("<KeyPress-Down>", self.onKeyPress)
@@ -204,6 +216,12 @@ class AutoComplete(object):
 		self.listbox.master.master.destroy()
 		self.curidx=0
 		self.active = False
+
+	def setSuggestContent(self,suggest_content):
+		if self.active:
+			self.DestroyGUI()
+		self.suggestlist=suggest_content
+		self.prepareData()
 
 # Test
 if __name__ == "__main__":

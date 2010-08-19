@@ -15,8 +15,10 @@ import tkinter.colorchooser as tkColorChooser
 import util.const as const
 from util.Cfg import Cfg
 from util.AutoComplete import AutoComplete
+from util.MeaningTip import MeaningTip
 from contentcontainer import WordFile
 from contentcontainer import SubtitleFile
+from contentcontainer import StartDictFile
 
 class BasePanel(object):
 	def __init__(self,name,section,root):
@@ -328,7 +330,7 @@ class RecitePanel(BasePanel):
 				self.c.file.extend([i,0] for i in flist)
 				# 更新filelist菜单
 				for i in flist:
-					self.cur_list_menu.add_radiobutton(label=os.path.split(i)[1],command=self.onCmdSwitchFile,
+					self.cur_list_menu.add_radiobutton(label=os.path.basename(i),command=self.onCmdSwitchFile,
 						value=i,variable=self.vFile)
 				# 从recent中删除当前文件列表中存在的
 				self.c.recent=[i for i in self.c.recent if i[0] not in (j[0] for j in self.c.file)]
@@ -386,7 +388,7 @@ class SubtitlePanel(BasePanel):
 		self.text=tkinter.Text(self.root,font=self.ft,width=50,height=1,padx=2,pady=2,relief=tkinter.FLAT,takefocus=0,wrap=None,exportselection=0,cursor='left_ptr')
 ##		print('=%d'%(self.text.winfo_reqheight(),))
 		self.text.insert(tkinter.INSERT,'MyPanel v0.1 powered by Python~')
-		self.text.pack(expand=True,fill=tkinter.BOTH)
+		self.text.pack(expand=tkinter.YES,fill=tkinter.BOTH)
 		self.draggableCtrl=self.text
 
 		# 设置tooltip
@@ -465,10 +467,10 @@ class SubtitlePanel(BasePanel):
 						i=i[len(tmp):]
 						tmp=i[:]
 
-			self.text.config(state='normal')
-			self.text.delete('0.0','end')
+			self.text.config(state=tkinter.NORMAL)
+			self.text.delete('0.0',tkinter.END)
 			self.text.insert(tkinter.INSERT,t)
-			self.text.config(state='disabled')
+			self.text.config(state=tkinter.DISABLED)
 
 ##			self.logger.info('font linespace=%d, text.winfo_reqheight()=%d',self.ft.metrics("linespace"),self.text.winfo_reqheight())
 ##			x=self.text.winfo_reqheight()-self.ft.metrics("linespace")
@@ -571,7 +573,7 @@ class SubtitlePanel(BasePanel):
 				self.c.file.extend([i,0] for i in flist)
 				# 更新filelist菜单
 				for i in flist:
-					self.cur_list_menu.add_radiobutton(label=os.path.split(i)[1],command=self.onCmdSwitchFile,
+					self.cur_list_menu.add_radiobutton(label=os.path.basename(i),command=self.onCmdSwitchFile,
 						value=i,variable=self.vFile)
 				# 从recent中删除当前文件列表中存在的
 				self.c.recent=[i for i in self.c.recent if i[0] not in (j[0] for j in self.c.file)]
@@ -638,6 +640,8 @@ class DictionaryPanel(BasePanel):
 	def __init__(self,name,section,root):
 		BasePanel.__init__(self,name,section,root)
 		self.vInput=tkinter.StringVar()
+		self.cur_dict=None
+		self.vFile=tkinter.StringVar() # 当前显示的文件
 		self.container=tkinter.Frame(root,bd=0,padx=0,pady=0,relief=tkinter.RIDGE)
 		self.ft = tkFont.Font(family = 'Fixdsys',size = 15,weight = tkFont.BOLD)
 
@@ -649,13 +653,13 @@ class DictionaryPanel(BasePanel):
 		self.offsetx,self.offsety=0,0
 
 		self.entryInput=tkinter.Entry(self.container,font=self.ft,bd=0,textvariable=self.vInput)
-		self.ac=AutoComplete(self.entryInput,open(r'd:\onlyword.txt').readlines()) # 自动完成
+		self.ac=AutoComplete(self.entryInput,self.onCmdSearch)#,open(r'd:\onlyword.txt').readlines()) # 自动完成
 		self.entryInput.grid(row=0,column=1,columnspan=1,sticky=tkinter.EW)
 
-		self.btnSearch=tkinter.Button(self.container,padx=0,pady=0,relief=tkinter.FLAT,overrelief=tkinter.RAISED,text='query')
+		self.btnSearch=tkinter.Button(self.container,padx=0,pady=0,relief=tkinter.FLAT,overrelief=tkinter.RAISED,text='query',command=self.onCmdSearch)
 		self.btnSearch.grid(row=0,column=2,sticky=tkinter.NSEW)
 
-		self.btnSave=tkinter.Button(self.container,padx=0,pady=0,relief=tkinter.FLAT,overrelief=tkinter.RAISED,text='save')
+		self.btnSave=tkinter.Button(self.container,padx=0,pady=0,relief=tkinter.FLAT,overrelief=tkinter.RAISED,text='save',command=self.onCmdSave)
 		self.btnSave.grid(row=0,column=3,sticky=tkinter.NSEW)
 
 		self.container.pack(expand=True,fill=tkinter.BOTH)
@@ -665,6 +669,8 @@ class DictionaryPanel(BasePanel):
 		self.labelInput.bind('<ButtonRelease-1>',self.onLeftMouse,'+')
 		self.labelInput.bind('<Motion>',self.onLeftMouse,'+')
 
+		self.mt=MeaningTip(self.entryInput,font=self.ft) # 显示释义
+
 	def onLeftMouse(self,event):
 		BasePanel.onLeftMouse(self,event)
 		if self.InDrag and self.ac.active:
@@ -672,20 +678,50 @@ class DictionaryPanel(BasePanel):
 
 	def loadCfg(self,cfg,section):
 		BasePanel.loadCfg(self,cfg,section)
+		self.c.cur=cfg.getint(section,'cur')
+		self.c.recent_dir=cfg.get(section,'recent_dir')
 
 	def saveCfg(self,cfg,section=None):
 		BasePanel.saveCfg(self,cfg,section)
+		if not section:
+			section=self.section
+		cfg.set(section,'cur',str(self.c.cur))
+		cfg.set(section,'recent_dir',self.c.recent_dir)
 
 
 	def applyCfg(self):
 		BasePanel.applyCfg(self)
 		self.container.configure(bg=self.c.bg)
 		self.labelInput.configure(bg=self.c.bg)
+		self.entryInput.configure(bg=self.c.bg)
 		self.btnSearch.configure(bg=self.c.bg)
 		self.btnSave.configure(bg=self.c.bg)
 
+
 	def createMenu(self,mainmenu):
 		BasePanel.createMenu(self,mainmenu)
+		if not self.c.enabled:
+			if self.cur_list_menu:
+				mainmenu.index(END)
+
+
+		self.menu=tkinter.Menu(mainmenu,tearoff=False)
+
+		self.cur_list_menu=tkinter.Menu(self.menu,tearoff=False)
+		for idx,i in enumerate(self.c.file):
+			self.cur_list_menu.add_radiobutton(label=os.path.split(i[0])[1],command=self.onCmdSwitchFile,
+				value=i[0],variable=self.vFile)
+			if idx==self.c.cur:
+				self.cur_list_menu.invoke(idx)
+		self.menu.add_cascade(label='files...',menu=self.cur_list_menu)
+
+		for k,v,c in (('dictionary file ...',self.onCmdChooseFile,None),
+								('bg color ...',self.onCmdChooseColor,'bg'),
+								('fg color ...',self.onCmdChooseColor,'fg'),
+								):
+			self.menu.add_command(label = k,command = lambda v=v,c=c:v(c))
+			self.menu.add_separator()
+		mainmenu.add_cascade(label = '%s config '%(self.title,),menu = self.menu)
 
 	def show(self):
 		BasePanel.show(self)
@@ -722,3 +758,101 @@ class DictionaryPanel(BasePanel):
 
 	def pausePanel(self,new_stat):
 		BasePanel.pausePanel(self,new_stat)
+
+	def onCmdChooseColor(self,extra):
+		self.logger.debug('extra=%s',extra)
+		if extra=='bg':
+			_,r=tkColorChooser.askcolor(self.c.bg,title='Choose background color')
+			if r:
+				self.c.bg=r
+				self.container.configure(bg=self.c.bg)
+				self.labelInput.configure(bg=self.c.bg)
+				self.entryInput.configure(bg=self.c.bg)
+				self.btnSearch.configure(bg=self.c.bg)
+				self.btnSave.configure(bg=self.c.bg)
+		elif extra=='fg':
+			_,r=tkColorChooser.askcolor(self.c.fg,title='Choose foreground color')
+			if r:
+				self.c.fg=r
+				self.labelInput.configure(fg=self.c.fg)
+				self.entryInput.configure(fg=self.c.fg)
+				self.btnSearch.configure(fg=self.c.fg)
+				self.btnSave.configure(fg=self.c.fg)
+
+	def onCmdChooseFile(self,extra=None):
+		'''文件选择'''
+##		oldstat=self.stat
+##		if self.stat==const.StatPlaying and self.timerid:
+##			self.pauseShow(const.StatPaused)
+		f=tkFileDialog.askopenfilenames(parent=self.root,title='Choose file(s) to use',
+			initialdir=self.c.recent_dir,
+			filetypes=[('Dict','*.dict *.dz'),('Idx', '*.idx'), ('Ifo','*.ifo'),('All files', '*')] )
+		if f:
+			flist=self.root.tk.splitlist(f) # http://psf.upfronthosting.co.za/roundup/tracker/issue5712 workaround: http://code.activestate.com/lists/python-tkinter-discuss/2016/
+			if len(flist)>5:
+				self.logger.info('一次最多添加5个文件，多余的会被丢弃，你选择了 %d个',len(flist))
+				flist=flist[:5]
+			for i,onefile in enumerate(flist):
+				self.logger.debug('multi file %02d/%d: %s',i,len(flist),onefile)
+
+			addorreplace=tkMessageBox.askyesnocancel('Add or replace','add the file(s) to your file list? (press "no" or replace current file list)',default=tkMessageBox.YES)
+			self.logger.debug('addorreplace=%s',addorreplace)
+			self.c.recent_dir=os.path.split(flist[0])[0]
+			if addorreplace==None:
+				self.logger.debug('do nothing')
+			elif addorreplace==True: # add
+				self.c.file.extend([i,0] for i in flist)
+				# 更新filelist菜单
+				for i in flist:
+					self.cur_list_menu.add_radiobutton(label=os.path.basename(i),command=self.onCmdSwitchFile,
+						value=i,variable=self.vFile)
+				# 从recent中删除当前文件列表中存在的
+				self.c.recent=[i for i in self.c.recent if i[0] not in (j[0] for j in self.c.file)]
+				self.logger.debug('add done. new file list: %s',self.c.file)
+
+			elif addorreplace==False: # replace
+				if self.stat==const.StatPlaying:
+					self.pausePanel()
+
+				# 从recent中删除当前文件列表中存在的
+				self.c.recent=[i for i in self.c.recent if i[0] not in (j[0] for j in self.c.file)]
+				self.cur_list_menu.delete(0,len(self.c.file)-1) # 删掉filelist菜单
+				# 当前文件列表入recent
+				for t in reversed(self.c.file):
+					self.c.recent.insert(0,t)
+				del self.c.file[:]
+				# 新文件入当前文件列表
+				self.c.file.extend([[i,0] for i in flist])
+				# 从recent中删除当前文件列表中存在的
+				self.c.recent=[i for i in self.c.recent if i[0] not in (j[0] for j in self.c.file)]
+				# 构造新filelist菜单
+				self.c.cur=0
+				for idx,i in enumerate(self.c.file):
+					self.cur_list_menu.add_radiobutton(label=os.path.split(i[0])[1],command=self.onCmdSwitchFile,
+						value=i[0],variable=self.vFile)
+					if idx==self.c.cur:
+						self.cur_list_menu.invoke(idx)
+				self.logger.debug('replace done. new file list: %s\nnew recent: %s',self.c.file,self.c.recent)
+
+##				self.updatePanel() # start playing anyway
+
+	def onCmdSwitchFile(self):
+		self.logger.info('swith to dictionary file %s',self.vFile.get())
+		# 获取文件对应的索引
+		idx=[i for i,n in enumerate(self.c.file) if n[0]==self.vFile.get()][0]
+		self.c.cur=idx
+		self.cur_dict=StartDictFile(self.c.file[self.c.cur][0])
+		self.cur_dict.readIFO()
+		self.cur_dict.readIDX()
+		self.ac.setSuggestContent(self.cur_dict.getIdxList())
+
+	def onCmdSearch(self):
+		self.logger.debug('查询 %s ...',self.entryInput.get())
+		r=self.cur_dict.getMeaning(self.entryInput.get())
+		if r:
+			self.logger.debug('返回 %s',r.encode('gb18030'))
+			# 显示在text中
+			self.mt.show(r)
+
+	def onCmdSave(self):
+		pass
