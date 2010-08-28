@@ -20,9 +20,11 @@ class AutoComplete(object):
 		self.win = win
 		self.active = False
 		self.record = '' # 当前字符串
+		self.curQuickIdx='' # 当前使用的索引
 		self.recent_fail='' # 保存最近的查不到任何匹配的字符串，用于优化
 		self.blkidx,self.blkendidx=0,0 # 当前listbox显示的是self.suggestlist的部分内容：self.suggestlist[self.blkidx:self.blkendidx]
 		self.curidx=0 # 在suggestlist中最接近当前字符串的item索引
+		self.listbox=None
 		self.listcontent=tkinter.StringVar()
 		self.win.bind("<1>", self.onClick)
 		self.win.bind("<KeyRelease>", self.onKeyRelease)
@@ -43,7 +45,7 @@ class AutoComplete(object):
 		self.quickIdx={}
 		tmp=0
 		pre_k=''
-		for k,g in itertools.groupby(self.suggestlist,key=lambda x:x[:2]):
+		for k,g in itertools.groupby(self.suggestlist,key=lambda x:x[:2].lower()):
 			if pre_k:
 				self.quickIdx[pre_k].append(tmp)
 			self.quickIdx[k]=[tmp,]
@@ -58,14 +60,15 @@ class AutoComplete(object):
 		if not self.suggestlist:
 			return
 		# 初步优化
-		if len(self.record)==2:
+		if len(self.record)==2 or (len(self.record)>2 and self.record[0:2]!=self.curQuickIdx):
 			try:
-				self.blkidx,self.blkendidx=self.quickIdx[self.record] # 起始，结束索引
+				self.blkidx,self.blkendidx=self.quickIdx[self.record[0:2]] # 起始，结束索引
 			except KeyError:
+				logging.debug('no quickIdx %s',self.record[0:2])
 				return
 			else:
-				self.logger.debug('blkendidx=%d',self.blkendidx)
-				self.logger.debug('set [%d,%d) through quickIdx for %s',self.blkidx,self.blkendidx,self.record)
+				self.logger.debug('set quickIdx[%s]  [%d,%d)',self.record[0:2],self.blkidx,self.blkendidx)
+				self.curQuickIdx=self.record[0:2]
 				self.listbox.delete(0,tkinter.END) # 先清空
 
 				for i in self.suggestlist[self.blkidx:self.blkendidx]:
@@ -76,7 +79,7 @@ class AutoComplete(object):
 ##				self.curidx=idx
 				self.curidx=0
 				self.listbox.select_set(self.curidx)
-				return
+##				return
 
 		if self.recent_fail and re.match('^%s'%(self.recent_fail,),self.record):
 			self.logger.debug('%s 以最近查找失败的串 %s 为起始串,不查找',self.record,self.recent_fail)
@@ -114,11 +117,15 @@ class AutoComplete(object):
 		if not self.suggestlist:
 			return
 		key = event.char
-		self.record=self.win.get()
+		modified=False
+		if self.record!=self.win.get().lower():
+			self.record=self.win.get().lower()
+			modified=True
+
 		if re.match("[a-zA-Z0-9|\-|\.| ]", key):
 			if not self.active and len(self.record)>1:
 				self.MakeGUI()
-			elif self.active:
+			elif self.active and modified:
 				self.FilterInput()
 		elif event.keysym in ("BackSpace","Delete"):
 			if self.active:
@@ -141,6 +148,9 @@ class AutoComplete(object):
 		else:
 			if self.active:
 				self.DestroyGUI()
+			else:
+				if modified and len(self.record)>1:
+					self.MakeGUI()
 
 	def onKeyPress(self,event):
 		if not self.suggestlist or not self.active:

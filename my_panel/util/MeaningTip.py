@@ -10,7 +10,7 @@ class MeaningTip(object):
 		self._opts = {'bd':1, 'bg':'lightyellow', 'fg':'black',\
 		  'follow_mouse':0, 'font':None, 'padx':4, 'pady':2,\
 		  'relief':'solid', 'state':'normal', 'takefocus':0, 'height':15,\
-		  'width':40,'wrap':tkinter.WORD}
+		  'width':50,'wrap':tkinter.WORD}
 		self.configure(**opts)
 		self._tipwindow = None
 		self.container=None
@@ -48,6 +48,7 @@ class MeaningTip(object):
 			tw.wm_overrideredirect(1)
 
 			self.container=tkinter.Frame(self._tipwindow,highlightthickness=0)
+			self.container.pack(fill=tkinter.BOTH,expand=tkinter.YES)
 
 			if tw.tk.call("tk", "windowingsystem") == 'aqua':
 				tw.tk.call("::tk::unsupported::MacWindowStyle", "style", tw._w, "help", "none")
@@ -57,10 +58,10 @@ class MeaningTip(object):
 				del opts[opt]
 			sb=tkinter.Scrollbar(self.container)
 			sb.pack(side=tkinter.RIGHT,fill=tkinter.Y)
-			self.text = tkinter.Text(self.container, yscrollcommand=sb.set,**opts)
-			sb.config(command=self.text.yview)
+			self.text = tkinter.Text(self.container,**opts)
 			self.text.pack(side=tkinter.LEFT,expand=tkinter.Y)
-			self.container.pack(fill=tkinter.BOTH,expand=tkinter.YES)
+			sb.config(command=self.text.yview)
+			self.text.config(yscrollcommand=sb.set)
 			tw.update_idletasks()
 			x, y = self.coords()
 			logging.debug('x,y=%d,%d',x,y)
@@ -76,6 +77,8 @@ class MeaningTip(object):
 		for el in l:
 			self.text.insert(tkinter.INSERT,el)
 			self.text.insert(tkinter.INSERT,'\n')
+##		self.text.yview(tkinter.MOVETO, 1.0)
+##		self.text.yview(tkinter.MOVETO,0.0)
 		self.text.config(state=tkinter.DISABLED)
 
 	def hide(self,event=None):

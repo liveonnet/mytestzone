@@ -49,7 +49,15 @@ class SubtitleFile(object):
 		except UnicodeDecodeError:
 			self.wordlist=codecs.open(fname,encoding='utf8').readlines()
 
-		self.wordlist=re.split('\r\n\r\n',''.join(self.wordlist))
+		logging.debug('use %s to split...',repr(os.linesep*2))
+		self._wordlist=re.split(os.linesep*2,''.join(self.wordlist))
+		if len(self._wordlist)<10:
+			logging.debug('use %s to split...',repr(os.linesep))
+			self._wordlist=re.split(os.linesep,''.join(self.wordlist))
+		
+		self.wordlist=self._wordlist
+		logging.debug('len(self.wordlist)=%d',len(self.wordlist))
+		logging.debug('self.wordlist[:3]=%s',self.wordlist[:3])
 		self.maxidx=len(self.wordlist)-1
 		self.curidx=0
 

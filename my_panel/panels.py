@@ -298,7 +298,7 @@ class RecitePanel(BasePanel):
 
 		old_stat=self.stat
 		if self.stat==const.StatPlaying:
-			self.pausePanel()
+			self.pausePanel(const.StatPaused4Switch)
 		self.c.cur=idx
 		self.content=t
 		if old_stat in (const.StatPlaying,const.StatStopped) :
@@ -338,7 +338,7 @@ class RecitePanel(BasePanel):
 
 			elif addorreplace==False: # replace
 				if self.stat==const.StatPlaying:
-					self.pausePanel()
+					self.pausePanel(const.StatPaused4Switch)
 
 				# 从recent中删除当前文件列表中存在的
 				self.c.recent=[i for i in self.c.recent if i[0] not in (j[0] for j in self.c.file)]
@@ -444,7 +444,7 @@ class SubtitlePanel(BasePanel):
 			print('stoped.')
 			self.stat=const.StatStopped
 		else:
-			lines=t.split('\r\n')
+			lines=t.split(os.linesep)
 			linecnt=len(lines) # 行数
 
 			maxwidth=max((self.ft.measure(i) for i in lines)) # 最大行需要宽度
@@ -541,7 +541,7 @@ class SubtitlePanel(BasePanel):
 
 		old_stat=self.stat
 		if self.stat==const.StatPlaying:
-			self.pausePanel()
+			self.pausePanel(const.StatPaused4Switch)
 		self.c.cur=idx
 		self.content=t
 		if old_stat in (const.StatPlaying,const.StatStopped) :
@@ -580,7 +580,7 @@ class SubtitlePanel(BasePanel):
 				self.logger.debug('add done. new file list: %s',self.c.file)
 			elif addorreplace==False: # replace
 				if self.stat==const.StatPlaying:
-					self.pausePanel()
+					self.pausePanel(const.StatPaused4Switch)
 
 				# 从recent中删除当前文件列表中存在的
 				self.c.recent=[i for i in self.c.recent if i[0] not in (j[0] for j in self.c.file)]
@@ -644,6 +644,7 @@ class DictionaryPanel(BasePanel):
 		self.vFile=tkinter.StringVar() # 当前显示的文件
 		self.container=tkinter.Frame(root,bd=0,padx=0,pady=0,relief=tkinter.RIDGE)
 		self.ft = tkFont.Font(family = 'Fixdsys',size = 15,weight = tkFont.BOLD)
+		self.mtft = tkFont.Font(family = 'Fixdsys',size = 12) # meaningtip字体
 
 		self.labelInput=tkinter.Label(self.container,font=self.ft,text='word: ')
 		self.labelInput.grid(row=0,column=0,padx=0,pady=0,sticky=tkinter.EW)
@@ -669,7 +670,7 @@ class DictionaryPanel(BasePanel):
 		self.labelInput.bind('<ButtonRelease-1>',self.onLeftMouse,'+')
 		self.labelInput.bind('<Motion>',self.onLeftMouse,'+')
 
-		self.mt=MeaningTip(self.entryInput,font=self.ft) # 显示释义
+		self.mt=MeaningTip(self.entryInput,font=self.mtft) # 显示释义
 
 	def onLeftMouse(self,event):
 		BasePanel.onLeftMouse(self,event)
@@ -812,7 +813,7 @@ class DictionaryPanel(BasePanel):
 
 			elif addorreplace==False: # replace
 				if self.stat==const.StatPlaying:
-					self.pausePanel()
+					self.pausePanel(const.StatPaused4Switch)
 
 				# 从recent中删除当前文件列表中存在的
 				self.c.recent=[i for i in self.c.recent if i[0] not in (j[0] for j in self.c.file)]
