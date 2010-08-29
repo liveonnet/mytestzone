@@ -67,6 +67,7 @@ class AutoComplete(object):
 				logging.debug('no quickIdx %s',self.record[0:2])
 				return
 			else:
+				self.recent_fail=''
 				self.logger.debug('set quickIdx[%s]  [%d,%d)',self.record[0:2],self.blkidx,self.blkendidx)
 				self.curQuickIdx=self.record[0:2]
 				self.listbox.delete(0,tkinter.END) # 先清空
@@ -114,13 +115,16 @@ class AutoComplete(object):
 			self.recent_fail=self.record[:]
 
 	def onKeyRelease(self, event):
+##		logging.debug('input %s',event.char)
 		if not self.suggestlist:
+			logging.debug('not suggestlist!')
 			return
 		key = event.char
 		modified=False
 		if self.record!=self.win.get().lower():
 			self.record=self.win.get().lower()
 			modified=True
+			logging.debug('modified!')
 
 		if re.match("[a-zA-Z0-9|\-|\.| ]", key):
 			if not self.active and len(self.record)>1:

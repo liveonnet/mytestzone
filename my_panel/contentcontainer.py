@@ -4,6 +4,7 @@ import re
 import logging
 import os
 import struct
+import gzip
 
 
 class WordFile(object):
@@ -54,7 +55,7 @@ class SubtitleFile(object):
 		if len(self._wordlist)<10:
 			logging.debug('use %s to split...',repr(os.linesep))
 			self._wordlist=re.split(os.linesep,''.join(self.wordlist))
-		
+
 		self.wordlist=self._wordlist
 		logging.debug('len(self.wordlist)=%d',len(self.wordlist))
 		logging.debug('self.wordlist[:3]=%s',self.wordlist[:3])
@@ -99,16 +100,25 @@ class StartDictFile(object):
 
 	def __init__(self,fname):
 		self.logger=logging.getLogger(self.__class__.__name__)
-		self.__baseFileName=""
-		tmp=fname.rpartition(".")
+		self.__baseFileName=''
+		tmp=fname.rpartition('.')
+		self.__dictFileName=None
+		if fname.endswith(('.dz','.DZ','.dZ','.Dz')):
+			logging.debug('the file name is dz file!')
+			self.__dictFileName=fname.lower()
+			tmp=tmp.rpartition('.')
 		if tmp[0] is None and tmp[1] is None:
 			self.logger.debug("no dot found in filename %s",fname)
 			self.__baseFileName=tmp[2]
 		else:
 			self.__baseFileName=tmp[0]
-		self.__idxFileName=self.__baseFileName+".idx"
-		self.__ifoFileName=self.__baseFileName+".ifo"
-		self.__dictFileName=self.__baseFileName+".dict"
+		self.__idxFileName=self.__baseFileName+'.idx'
+		self.__ifoFileName=self.__baseFileName+'.ifo'
+		if not self.__dictFileName:
+			if not os.path.exists(self.__baseFileName+'.dict'):
+				self.__dictFileName=self.__baseFileName+'.dict.dz'
+			else:
+				self.__dictFileName=self.__baseFileName+'.dict'
 
 		self.__dictInfo={}
 		self.__dictIndex={}
@@ -138,22 +148,25 @@ class StartDictFile(object):
 
 	def readIDX(self):
 		with open(self.__idxFileName,'rb') as f:
+			fsize=os.stat(self.__idxFileName).st_size
 			wordStr=""
 			wordDataOffset=0
 			wordDataSize=0
 			offsetLen=4
 			cnt=0
 			while True:
+				if f.tell()==fsize:
+					break
 				wordStr=self.__readUntilZero(f)
-				if wordStr=="":
+				if wordStr=='':
 					self.logger.debug("wordStr=\"\",break!")
 					break
 				cnt+=1
 ##				if cnt>=50:
 ##					logging.debug("reach 100 items,break.")
 ##					break
-#				if cnt%5000==0:
-#					logging.debug("processed %d",cnt)
+##				if cnt%5000==0:
+##					logging.debug("processed %d",cnt)
 #				if len(wordStr)>=256:
 #					print str(len(wordStr))
 #					logging.debug("wordStr>=256! (%d)",len(wordStr))
@@ -168,18 +181,24 @@ class StartDictFile(object):
 		if maxRead:
 			return fileObj.read(maxRead)
 
-		strRtn=""
+		strRtn=b""
 		while True:
-			by=fileObj.read(1).decode()
-			if by=="\0" or by=="":
+			by=fileObj.read(1)
+			if by=="":
 				break
-			strRtn+=by
+			try:
+				tmp=by.decode('utf-8')
+				if tmp=="\0" :# or by=="": # TODO: no EOF check here!
+					break
+				strRtn+=by
+			except UnicodeDecodeError:
+				strRtn+=by
 
-		return strRtn
+		return strRtn.decode('utf-8')
 
 	def __readNumber(self,fileObj,numberSize=4):
 		strRtn=fileObj.read(numberSize)
-		intRtn=struct.unpack("!i",strRtn)[0]
+		intRtn=struct.unpack("!I",strRtn)[0]
 #		logging.debug("strRtn=|%s| intRtn=%d",' '.join(["%02X"%(ord(c)) for c in strRtn]),intRtn)
 		return intRtn
 
@@ -204,7 +223,11 @@ class StartDictFile(object):
 
 		rslt=''
 
-		with open(self.__dictFileName,'rb') as f:
+		if self.__dictFileName.endswith('.dz'):
+			f= gzip.GzipFile(self.__dictFileName,'rb')
+		else:
+			f= codecs.open(self.__dictFileName,'rb')
+		try:
 			f.seek(offset,os.SEEK_SET)
 			cnt=0
 			by=""
@@ -229,6 +252,8 @@ class StartDictFile(object):
 					tmpSize,tmpText=getattr(self,"_"+self.__class__.__name__+self.__class__.__functionMaping[datatype])(f,offset,size)
 					rslt+=tmpText
 					cnt+=tmpSize
+		finally:
+			f.close()
 
 		return rslt
 
