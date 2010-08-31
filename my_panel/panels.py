@@ -9,6 +9,7 @@ import tkinter.ttk as ttk
 import json
 import logging
 import os
+import datetime
 from util.ToolTip import ToolTip
 from util.HyperlinkManager import HyperlinkManager
 import tkinter.colorchooser as tkColorChooser
@@ -666,9 +667,9 @@ class DictionaryPanel(BasePanel):
 		self.container.pack(expand=True,fill=tkinter.BOTH)
 
 		# 通过 label 处理拖动
-		self.labelInput.bind('<ButtonPress-1>', self.onLeftMouse,'+')
-		self.labelInput.bind('<ButtonRelease-1>',self.onLeftMouse,'+')
-		self.labelInput.bind('<Motion>',self.onLeftMouse,'+')
+		self.labelInput.bind("<ButtonPress-1>", self.onLeftMouse,'+')
+		self.labelInput.bind("<ButtonRelease-1>",self.onLeftMouse,'+')
+		self.labelInput.bind("<Motion>",self.onLeftMouse,'+')
 
 		self.mt=MeaningTip(self.entryInput,font=self.mtft) # 显示释义
 
@@ -847,13 +848,20 @@ class DictionaryPanel(BasePanel):
 		self.cur_dict.readIDX()
 		self.ac.setSuggestContent(self.cur_dict.getIdxList())
 
-	def onCmdSearch(self):
-		self.logger.debug('查询 %s ...',self.entryInput.get())
-		r=self.cur_dict.getMeaning(self.entryInput.get())
+	def onCmdSearch(self,event=None):
+		text=self.entryInput.get()
+		self.logger.debug('查询 %s ...',text)
+		r=self.cur_dict.getMeaning(text)
 		if r:
 			self.logger.debug('返回 %s',r.encode('gb18030'))
 			# 显示在text中
 			self.mt.show(r)
 
-	def onCmdSave(self):
-		pass
+		self.onCmdSave(text)
+
+	def onCmdSave(self,text=None):
+		if not text:
+			text=self.entryInput.get()
+
+		if text:
+			open(r'd:\stored_words.txt','a').write(' '.join((datetime.datetime.now().strftime('%Y.%m.%d %H:%M:%S'),text,'\n')))

@@ -56,20 +56,26 @@ class MeaningTip(object):
 			opts = self._opts.copy()
 			for opt in ( 'follow_mouse', 'state'):
 				del opts[opt]
-			sb=tkinter.Scrollbar(self.container)
-			sb.pack(side=tkinter.RIGHT,fill=tkinter.Y)
+			self.sb=tkinter.Scrollbar(self.container)
+			self.sb.pack(side=tkinter.RIGHT,fill=tkinter.Y)
 			self.text = tkinter.Text(self.container,**opts)
 			self.text.pack(side=tkinter.LEFT,expand=tkinter.Y)
-			sb.config(command=self.text.yview)
-			self.text.config(yscrollcommand=sb.set)
+			self.sb.config(command=self.text.yview)
+			self.text.config(yscrollcommand=self.sb.set)
 			tw.update_idletasks()
-			x, y = self.coords()
-			logging.debug('x,y=%d,%d',x,y)
-			tw.wm_geometry("+%d+%d" % (x, y))
-			tw.deiconify()
+##			x, y = self.coords()
+##			logging.debug('x,y=%d,%d',x,y)
+##			tw.wm_geometry("+%d+%d" % (x, y))
+##			tw.deiconify()
 			logging.debug('meaning tip created.')
+		else:
+			self._tipwindow.withdraw()
 		if not content:
 			content='查不到'
+		x, y = self.coords()
+		logging.debug('x,y=%d,%d',x,y)
+		self._tipwindow.wm_geometry("+%d+%d" % (x, y))
+		self._tipwindow.deiconify()
 		self.text.config(state=tkinter.NORMAL)
 		self.text.delete('0.0',tkinter.END)
 		l=content.split('\n')
@@ -86,30 +92,34 @@ class MeaningTip(object):
 		self._tipwindow = None
 		if tw:
 			logging.debug('meaning tip closed.')
+			tw.withdraw()
 			tw.destroy()
 
 	##----these methods might be overridden in derived classes:----------------------------------##
 
 	def coords(self):
-		# The tip window must be completely outside the master widget;
-		# otherwise when the mouse enters the tip window we get
-		# a leave event and it disappears, and then we get an enter
-		# event and it reappears, and so on forever :-(
-		# or we take care that the mouse pointer is always outside the tipwindow :-)
-		tw = self.master
-		twx, twy = tw.winfo_reqwidth(), tw.winfo_reqheight()
+		tw = self.master.master
+		tw.update_idletasks()
+		twx, twy = self.text.winfo_reqwidth()+self.sb.winfo_reqwidth(),self.text.winfo_reqheight()
 		w, h = tw.winfo_screenwidth(), tw.winfo_screenheight()
 		# calculate the y coordinate:
-		y = self.master.winfo_rooty() + self.master.winfo_height() + 3
+		y = self.master.winfo_rooty() + self.master.winfo_height()
+##		logging.debug('master.master req twx,twy=%d,%d w,h=%d,%d y=%d',twx,twy,w,h,y)
+##		logging.debug('master.master twx,twy=%d,%d',tw.winfo_width(),tw.winfo_height())
+##		logging.debug('text %d,%d',self.text.winfo_reqwidth(),self.text.winfo_reqheight())
+##		logging.debug('master  req %d,%d',self.master.winfo_reqwidth(),self.master.winfo_reqheight())
+##		logging.debug('master %d,%d',self.master.winfo_width(),self.master.winfo_height())
 		if y + twy > h:
-			y = self.master.winfo_rooty() - twy - 3
-		# we can use the same x coord in both cases:
-		tw.update_idletasks()
-		x = tw.winfo_rootx() + twx / 2
-		if x+self.master.winfo_reqwidth()>w:
-			x=x-twx
-		elif x + twx > w:
+			y = tw.winfo_rooty() - twy
+
+		if y<tw.winfo_rooty():
+			x = tw.winfo_rootx()
+		else:
+			x = tw.winfo_rootx() + twx / 2
+		if x + twx > w: # 右边出界
 			x = w - twx
+##		elif x+self.master.winfo_reqwidth()>w:
+##			x=x-twx
 		return x, y
 
 if __name__=='__main__':

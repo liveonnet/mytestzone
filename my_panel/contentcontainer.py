@@ -5,10 +5,12 @@ import logging
 import os
 import struct
 import gzip
+from io import BufferedReader
 
 
 class WordFile(object):
 	def __init__(self,fname):
+		self.logger=logging.getLogger(self.__class__.__name__)
 		try:
 			self.wordlist=codecs.open(fname,encoding='gb18030').readlines()
 		except UnicodeDecodeError:
@@ -45,6 +47,7 @@ class WordFile(object):
 
 class SubtitleFile(object):
 	def __init__(self,fname):
+		self.logger=logging.getLogger(self.__class__.__name__)	
 		try:
 			self.wordlist=codecs.open(fname,encoding='gb18030').readlines()
 		except UnicodeDecodeError:
@@ -147,7 +150,7 @@ class StartDictFile(object):
 
 
 	def readIDX(self):
-		with open(self.__idxFileName,'rb') as f:
+		with BufferedReader(open(self.__idxFileName,'rb'),1048576) as f:
 			fsize=os.stat(self.__idxFileName).st_size
 			wordStr=""
 			wordDataOffset=0

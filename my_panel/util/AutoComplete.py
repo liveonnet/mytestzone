@@ -60,7 +60,7 @@ class AutoComplete(object):
 		if not self.suggestlist:
 			return
 		# 初步优化
-		if len(self.record)==2 or (len(self.record)>2 and self.record[0:2]!=self.curQuickIdx):
+		if (len(self.record)>=2 and self.record[0:2]!=self.curQuickIdx):
 			try:
 				self.blkidx,self.blkendidx=self.quickIdx[self.record[0:2]] # 起始，结束索引
 			except KeyError:
@@ -82,22 +82,24 @@ class AutoComplete(object):
 				self.listbox.select_set(self.curidx)
 ##				return
 
-		if self.recent_fail and re.match('^%s'%(self.recent_fail,),self.record):
+		if self.recent_fail and self.record.startswith(self.recent_fail): #re.match('^%s'%(self.recent_fail,),self.record):
 			self.logger.debug('%s 以最近查找失败的串 %s 为起始串,不查找',self.record,self.recent_fail)
 			return
 
 		p=re.compile("^%s[a-zA-Z0-9|\-|\.| ]*"%(self.record,))
 		for i,w in enumerate(self.suggestlist[self.blkidx:self.blkendidx]):
 			if re.match(p,w):
-				self.listbox.selection_clear(self.listbox.curselection()[0])
+				if self.listbox.curselection():
+					self.listbox.selection_clear(self.listbox.curselection()[0]) # 取消以前的选择
 				self.listbox.yview_scroll(i-self.curidx,tkinter.UNITS)
 				self.curidx=i
-##				self.listbox.see(self.curidx)
+				self.listbox.see(self.curidx)
 				self.listbox.select_set(self.curidx)
 				break
 		else: # 没有完全匹配的则查最接近匹配的
-			self.recent_fail=self.record[:]
-			self.logger.debug('没有完全匹配 %s 的',self.recent_fail)
+##			self.recent_fail=self.record[:]
+##			self.logger.debug('没有完全匹配 %s 的',self.recent_fail)
+			self.logger.debug('没有完全匹配 %s 的',self.record)
 			record=self.record[:]
 			while len(record)>2:
 				record=record[:-1]
@@ -144,6 +146,7 @@ class AutoComplete(object):
 				self.win.delete(0,tkinter.END)
 				self.win.insert(tkinter.INSERT, self.listbox.get(self.listbox.curselection()[0]))
 				self.DestroyGUI()
+				self.logger.debug('pressed return!')
 				self.cbFunc()
 		elif event.keysym in ("Up","Down","Next","Prior","Shift_R", "Shift_L",
 			"Control_L", "Control_R", "Alt_L",
@@ -199,37 +202,43 @@ class AutoComplete(object):
 		self.DestroyGUI()
 
 	def MakeGUI(self):
-		x, y, cx, cy = self.win.bbox("insert")
-		self.logger.debug('x,y=%d,%d, cx,cy=%d,%d',x,y,cx,cy)
-		x = x + self.win.winfo_rootx() + 2
-		y = y + cy + self.win.winfo_rooty()+22 # TODO: magic number 20 是标题栏高度
-		tl = tkinter.Toplevel(self.win.master)
-		tl.wm_overrideredirect(1)
-		tl.wm_geometry("+%d+%d" % (x, y))
-		form = tkinter.Frame(tl, highlightthickness=0)
-		form.pack(fill=tkinter.BOTH, expand=tkinter.YES)
-		sb = tkinter.Scrollbar(form, highlightthickness=0)
-		sb.pack(side=tkinter.RIGHT, fill=tkinter.BOTH)
-		ft = tkFont.Font(family = 'Fixdsys',size = 12)
-		self.listbox = tkinter.Listbox(form, font=ft,highlightthickness=0,relief=tkinter.FLAT,
-			yscrollcommand=sb.set, height=10,listvariable=self.listcontent)
-		self.listbox.selection_set(0)
-		self.listbox.pack(side=tkinter.LEFT, fill=tkinter.BOTH)
-		sb.config(command=self.listbox.yview)
-##        self.listbox.focus()
-		self.win.bind("<KeyPress-Down>", self.onKeyPress)
-		self.win.bind("<KeyPress-Up>", self.onKeyPress)
-		self.win.bind("<KeyPress-Next>", self.onKeyPress)
-		self.win.bind("<KeyPress-Prior>", self.onKeyPress)
-		self.win.bind("<KeyRelease>", self.onKeyRelease)
-		self.listbox.bind("<Double-1>", self.onDbClick)
+		if not self.listbox:
+			x, y, cx, cy = self.win.bbox("insert")
+			self.logger.debug('x,y=%d,%d, cx,cy=%d,%d',x,y,cx,cy)
+			x = x + self.win.winfo_rootx() + 2
+			y = y + cy + self.win.winfo_rooty()+23 # TODO: magic number 23 是标题栏高度
+			tl = tkinter.Toplevel(self.win.master)
+			tl.wm_overrideredirect(1)
+			tl.wm_geometry("+%d+%d" % (x, y))
+			form = tkinter.Frame(tl, highlightthickness=0)
+			form.pack(fill=tkinter.BOTH, expand=tkinter.YES)
+			sb = tkinter.Scrollbar(form, highlightthickness=0)
+			sb.pack(side=tkinter.RIGHT, fill=tkinter.BOTH)
+			ft = tkFont.Font(family = 'Fixdsys',size = 12)
+			self.listbox = tkinter.Listbox(form, font=ft,highlightthickness=0,relief=tkinter.FLAT,
+				yscrollcommand=sb.set, height=10,listvariable=self.listcontent)
+			self.listbox.selection_set(0)
+			self.listbox.pack(side=tkinter.LEFT, fill=tkinter.BOTH)
+			sb.config(command=self.listbox.yview)
+		else:
+			self.win.bind("<KeyPress-Down>", self.onKeyPress)
+			self.win.bind("<KeyPress-Up>", self.onKeyPress)
+			self.win.bind("<KeyPress-Next>", self.onKeyPress)
+			self.win.bind("<KeyPress-Prior>", self.onKeyPress)
+			self.win.bind("<KeyRelease-Return>",self.onKeyRelease) # 接管回车
+	##		self.win.bind("<KeyRelease>", self.onKeyRelease)
+			self.listbox.bind("<Double-1>", self.onDbClick)
+			self.listbox.master.master.deiconify()
 		self.FilterInput()
 		self.active=True
 
 	def DestroyGUI(self):
-		self.listbox.master.master.destroy()
+##		self.listbox.master.master.destroy()
+		self.listbox.master.master.withdraw()
 		self.curidx=0
 		self.active = False
+		self.win.bind("<KeyRelease-Return>", self.cbFunc) # 恢复回车
+		self.logger.debug('destory gui')
 
 	def setSuggestContent(self,suggest_content):
 		if self.active:
