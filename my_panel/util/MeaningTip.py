@@ -17,7 +17,7 @@ class MeaningTip(object):
 ##		self._id1 = self.master.bind("<Enter>", self.enter, '+')
 ##		self._id2 = self.master.bind("<Leave>", self.leave, '+')
 ##		self._id3 = self.master.bind("<ButtonPress>", self.leave, '+')
-		self._id3 = self.master.bind("<Button-1>", self.hide, '+')
+		self._id3 = self.master.bind("<1>", self.hide, '+')
 ##		self._id4 = self.master.bind("<Motion>", self.motion, '+')
 
 	def configure(self, **opts):
@@ -64,22 +64,22 @@ class MeaningTip(object):
 			self.text.config(yscrollcommand=self.sb.set)
 			tw.update_idletasks()
 ##			x, y = self.coords()
-##			logging.debug('x,y=%d,%d',x,y)
+##			self.logger.debug('x,y=%d,%d',x,y)
 ##			tw.wm_geometry("+%d+%d" % (x, y))
 ##			tw.deiconify()
-			logging.debug('meaning tip created.')
+			self.logger.debug('meaning tip created.')
 		else:
 			self._tipwindow.withdraw()
 		if not content:
 			content='查不到'
 		x, y = self.coords()
-		logging.debug('x,y=%d,%d',x,y)
+		self.logger.debug('x,y=%d,%d',x,y)
 		self._tipwindow.wm_geometry("+%d+%d" % (x, y))
 		self._tipwindow.deiconify()
 		self.text.config(state=tkinter.NORMAL)
 		self.text.delete('0.0',tkinter.END)
 		l=content.split('\n')
-		logging.debug('total %d lines to show',len(l))
+		self.logger.debug('total %d lines to show',len(l))
 		for el in l:
 			self.text.insert(tkinter.INSERT,el)
 			self.text.insert(tkinter.INSERT,'\n')
@@ -91,7 +91,7 @@ class MeaningTip(object):
 		tw = self._tipwindow
 		self._tipwindow = None
 		if tw:
-			logging.debug('meaning tip closed.')
+			self.logger.debug('meaning tip closed.')
 			tw.withdraw()
 			tw.destroy()
 
@@ -104,11 +104,11 @@ class MeaningTip(object):
 		w, h = tw.winfo_screenwidth(), tw.winfo_screenheight()
 		# calculate the y coordinate:
 		y = self.master.winfo_rooty() + self.master.winfo_height()
-##		logging.debug('master.master req twx,twy=%d,%d w,h=%d,%d y=%d',twx,twy,w,h,y)
-##		logging.debug('master.master twx,twy=%d,%d',tw.winfo_width(),tw.winfo_height())
-##		logging.debug('text %d,%d',self.text.winfo_reqwidth(),self.text.winfo_reqheight())
-##		logging.debug('master  req %d,%d',self.master.winfo_reqwidth(),self.master.winfo_reqheight())
-##		logging.debug('master %d,%d',self.master.winfo_width(),self.master.winfo_height())
+##		self.logger.debug('master.master req twx,twy=%d,%d w,h=%d,%d y=%d',twx,twy,w,h,y)
+##		self.logger.debug('master.master twx,twy=%d,%d',tw.winfo_width(),tw.winfo_height())
+##		self.logger.debug('text %d,%d',self.text.winfo_reqwidth(),self.text.winfo_reqheight())
+##		self.logger.debug('master  req %d,%d',self.master.winfo_reqwidth(),self.master.winfo_reqheight())
+##		self.logger.debug('master %d,%d',self.master.winfo_width(),self.master.winfo_height())
 		if y + twy > h:
 			y = tw.winfo_rooty() - twy
 

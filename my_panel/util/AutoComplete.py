@@ -26,7 +26,7 @@ class AutoComplete(object):
 		self.curidx=0 # 在suggestlist中最接近当前字符串的item索引
 		self.listbox=None
 		self.listcontent=tkinter.StringVar()
-		self.win.bind("<1>", self.onClick)
+		self.win.bind("<1>", self.onClick,'+')
 		self.win.bind("<KeyRelease>", self.onKeyRelease)
 
 		if not suggestlist and __name__=='__main__':
@@ -64,7 +64,7 @@ class AutoComplete(object):
 			try:
 				self.blkidx,self.blkendidx=self.quickIdx[self.record[0:2]] # 起始，结束索引
 			except KeyError:
-				logging.debug('no quickIdx %s',self.record[0:2])
+				self.logger.debug('no quickIdx %s',self.record[0:2])
 				return
 			else:
 				self.recent_fail=''
@@ -117,16 +117,16 @@ class AutoComplete(object):
 			self.recent_fail=self.record[:]
 
 	def onKeyRelease(self, event):
-##		logging.debug('input %s',event.char)
+##		self.logger.debug('input %s',event.char)
 		if not self.suggestlist:
-			logging.debug('not suggestlist!')
+			self.logger.debug('not suggestlist!')
 			return
 		key = event.char
 		modified=False
 		if self.record!=self.win.get().lower():
 			self.record=self.win.get().lower()
 			modified=True
-			logging.debug('modified!')
+			self.logger.debug('modified!')
 
 		if re.match("[a-zA-Z0-9|\-|\.| ]", key):
 			if not self.active and len(self.record)>1:
@@ -143,9 +143,10 @@ class AutoComplete(object):
 				self.DestroyGUI()
 		elif event.keysym == "Return":
 			if self.active:
-				self.win.delete(0,tkinter.END)
-				self.win.insert(tkinter.INSERT, self.listbox.get(self.listbox.curselection()[0]))
-				self.DestroyGUI()
+				if self.listbox.curselection():
+					self.win.delete(0,tkinter.END)
+					self.win.insert(tkinter.INSERT, self.listbox.get(self.listbox.curselection()[0]))
+					self.DestroyGUI()
 				self.logger.debug('pressed return!')
 				self.cbFunc()
 		elif event.keysym in ("Up","Down","Next","Prior","Shift_R", "Shift_L",
@@ -202,11 +203,11 @@ class AutoComplete(object):
 		self.DestroyGUI()
 
 	def MakeGUI(self):
+		x, y, cx, cy = self.win.bbox("insert")
+		self.logger.debug('x,y=%d,%d, cx,cy=%d,%d',x,y,cx,cy)
+		x = x + self.win.winfo_rootx() + 2
+		y = y + cy + self.win.winfo_rooty()+self.win.winfo_height()+1
 		if not self.listbox:
-			x, y, cx, cy = self.win.bbox("insert")
-			self.logger.debug('x,y=%d,%d, cx,cy=%d,%d',x,y,cx,cy)
-			x = x + self.win.winfo_rootx() + 2
-			y = y + cy + self.win.winfo_rooty()+23 # TODO: magic number 23 是标题栏高度
 			tl = tkinter.Toplevel(self.win.master)
 			tl.wm_overrideredirect(1)
 			tl.wm_geometry("+%d+%d" % (x, y))
@@ -221,6 +222,7 @@ class AutoComplete(object):
 			self.listbox.pack(side=tkinter.LEFT, fill=tkinter.BOTH)
 			sb.config(command=self.listbox.yview)
 		else:
+			self.listbox.master.master.wm_geometry("+%d+%d" % (x, y))
 			self.win.bind("<KeyPress-Down>", self.onKeyPress)
 			self.win.bind("<KeyPress-Up>", self.onKeyPress)
 			self.win.bind("<KeyPress-Next>", self.onKeyPress)
@@ -234,11 +236,12 @@ class AutoComplete(object):
 
 	def DestroyGUI(self):
 ##		self.listbox.master.master.destroy()
-		self.listbox.master.master.withdraw()
-		self.curidx=0
-		self.active = False
-		self.win.bind("<KeyRelease-Return>", self.cbFunc) # 恢复回车
-		self.logger.debug('destory gui')
+		if self.listbox:
+			self.listbox.master.master.withdraw()
+			self.curidx=0
+			self.active = False
+			self.win.bind("<KeyRelease-Return>", self.cbFunc) # 恢复回车
+			self.logger.debug('destory gui')
 
 	def setSuggestContent(self,suggest_content):
 		if self.active:

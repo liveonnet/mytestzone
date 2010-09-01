@@ -675,8 +675,12 @@ class DictionaryPanel(BasePanel):
 
 	def onLeftMouse(self,event):
 		BasePanel.onLeftMouse(self,event)
-		if self.InDrag and self.ac.active:
-			self.ac.DestroyGUI()
+		if self.InDrag:
+			if self.ac.active:
+				self.ac.DestroyGUI()
+			self.mt.hide()
+			
+		
 
 	def loadCfg(self,cfg,section):
 		BasePanel.loadCfg(self,cfg,section)
