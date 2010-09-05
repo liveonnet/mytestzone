@@ -6,7 +6,10 @@ import os
 import struct
 import gzip
 from io import BufferedReader
-
+import urllib, urllib.request, urllib.error, urllib.parse, http.cookiejar, json
+import time
+import datetime
+from feed import GoogleFeed
 
 class WordFile(object):
 	def __init__(self,fname):
@@ -47,7 +50,7 @@ class WordFile(object):
 
 class SubtitleFile(object):
 	def __init__(self,fname):
-		self.logger=logging.getLogger(self.__class__.__name__)	
+		self.logger=logging.getLogger(self.__class__.__name__)
 		try:
 			self.wordlist=codecs.open(fname,encoding='gb18030').readlines()
 		except UnicodeDecodeError:
@@ -420,8 +423,396 @@ class StartDictFile(object):
 		self.logger.debug("done.")
 
 
+class C4GRApi(object):
+	'''简单支持几个google reade api
+	refer to http://code.google.com/p/pyrfeed/wiki/GoogleReaderAPI
+	'''
+	CLIENT_ID='my_panel/0.0.1'
+	URL_GR_LOGIN='https://www.google.com/accounts/ClientLogin'
+	URL_GR_TOKEN='https://www.google.com/reader/api/0/token'
+
+	URL_GR_API_BASE='https://www.google.com/reader/api/0/'
+	URL_GR_API_TAG_LIST=URL_GR_API_BASE+'tag/list'
+	URL_GR_API_UNREAD_COUNT=URL_GR_API_BASE+'unread-count'
+	URL_GR_API_SUBSCRIPTION_LIST=URL_GR_API_BASE+'subscription/list'
+	URL_GR_API_EDIT_TAG=URL_GR_API_BASE+'edit-tag'
+
+	URL_GR_ATOM_BASE='https://www.google.com/reader/atom/'
+	URL_GR_ATOM_STATE_BASE=URL_GR_ATOM_BASE+'user/-/state/com.google/'
+	URL_GR_ATOM_STATE_READING_LIST=URL_GR_ATOM_STATE_BASE+'reading-list'
+	URL_GR_ATOM_STATE_READ=URL_GR_ATOM_STATE_BASE+'read'
+	URL_GR_ATOM_STATE_KEPT_UNREAD=URL_GR_ATOM_STATE_BASE+'kept-unread'
+	URL_GR_ATOM_STATE_TRACAKING_KEPT_UNREAD=URL_GR_ATOM_STATE_BASE+'tracking-kept-unread'
+	URL_GR_ATOM_STATE_STARRED=URL_GR_ATOM_STATE_BASE+'starred'
+
+
+	class myHTTPDefaultErrorHandler(urllib.request.HTTPDefaultErrorHandler):
+		def http_error_default(self, req, fp, code, msg, hdrs):
+			if code==401:
+				logger=logging.getLogger(self.__class__.__name__)
+				logger.debug('got 401 error')
+				return fp
+
+	def __init__(self,email,pwd,cookiefile):
+		self.logger=logging.getLogger(self.__class__.__name__)
+		self._email=email
+		self._pwd=pwd
+
+		self._cookiefile=cookiefile # 保存cookie的文件的名称
+##		self._sid=None # 登录后获得的sid
+		self._auth=None
+		self._token=None
+		self._continuation=None
+##		self.headers=None
+		self._signed_in=False # 标识登录与否
+
+		self.readinglist=None
+		self.taglist=None
+		self.subscriptionlist=None
+		self.unreadlist=None
+
+		self._cj = http.cookiejar.LWPCookieJar()
+		try:
+			self._cj.revert(self._cooikefile)
+		except:
+			None
+		self.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(self._cj),self.__class__.myHTTPDefaultErrorHandler)
+		self.opener.addheaders = [('User-Agent', 'Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.9.1.3) Gecko/20090824 Firefox/3.5.3')]
+		urllib.request.install_opener(self.opener)
+
+
+	@classmethod
+	def checkLogin(cls,func):
+		'''保证已经登录'''
+		def wrap_func(self,*args,**kwargs):
+##			self.logger.debug('check login ...')
+			if not self.signed():
+##				self.logger.debug('try login ...')
+				if not self.login(True):
+					return None
+##				self.logger.debug('login ok ...')
+##			else:
+##				self.logger.debug('check login done')
+			return func(self,*args,**kwargs)
+		return wrap_func
+
+
+	def signed(self):
+		return self._signed_in
+
+	def login(self,force=False):
+		'''登录'''
+		if self.signed() and (not force):
+			self.logger.debug('already signed in!')
+			return self.signed()
+
+		data={}
+		data['service']='reader'
+		data['Email']=self._email
+		data['Passwd']=self._pwd
+		r,_=self.getResponse(self.__class__.URL_GR_LOGIN,data)
+		if not r:
+			self._signed_in=False
+		else:
+			r=r.decode()
+##			self.logger.debug('login request return %s',r)
+
+			if 'Auth=' in r:
+				self._auth=r[r.find('Auth=')+5:r.find('\n',r.find('Auth='))]
+				self.logger.debug('Auth=%s',self._auth)
+				self._signed_in=True
+
+##				cookie = http.cookiejar.Cookie(version=0, name='SID', value=self._sid, port=None, port_specified=False, domain='.google.com', domain_specified=True, domain_initial_dot=True, path='/', path_specified=True, secure=False, expires='1600000000', discard=False, comment=None, comment_url=None, rest={})
+##				self._cj.set_cookie(cookie)
+##				cookie = http.cookiejar.Cookie(version=0, name='Auth', value=self._auth, port=None, port_specified=False, domain='.google.com', domain_specified=True, domain_initial_dot=True, path='/', path_specified=True, secure=False, expires='1600000000', discard=False, comment=None, comment_url=None, rest={})
+##				self._cj.set_cookie(cookie)
+			else:
+				self.logger.debug('no Auth found in response! login failed!')
+
+		return self._signed_in
+
+	def getResponse(self,url,data=None,headers=None,**kwargs):
+		"""获得请求url的响应"""
+		res,rurl=None,None
+		req=urllib.request.Request(url,urllib.parse.urlencode(data) if data else None)
+		if 	headers:
+			for k,v in headers:
+				req.add_header(k,v)
+
+		for i in range(3): # 尝试3次
+			if i!=0:
+				logging.info("第 %d 次尝试...",i+1)
+			try:
+##				logging.debug("访问 %s",url)
+				r = self.opener.open(
+					req)#,
+##					timeout=30)
+				res=r.read()
+				rurl=r.geturl()
+				break
+			except urllib.error.HTTPError as e:
+				logging.exception("请求出错！ %s",e)
+			except urllib.error.URLError as e:
+				logging.exception("访问地址 %s 失败! %s",url,e)
+			except IOError as e:
+				logging.info("IO错误! %s",e)
+			except Exception as e:
+				logging.info("未知错误! %s",e)
+				raise
+
+		return (res,rurl)
+
+	def getReadingList(self,n=20):
+		'''获取待读的item的列表'''
+		args={'n':n,
+		       'client':self.__class__.CLIENT_ID,
+		       'r':'d',
+           'ck': '%.3f'%(time.time(),)
+		       }
+		if self._continuation:
+			args['c']=self._continuation
+		url='?'.join((self.__class__.URL_GR_ATOM_STATE_READING_LIST,urllib.parse.urlencode(args)))
+
+		for _ in range(3):
+			headers=[('Authorization','GoogleLogin auth=%s'%(self._auth,))]
+			r,_=self.getResponse(url,None,headers)
+			if r:
+				r=r.decode()
+##				self.logger.debug('return %s',r)
+				try:
+					x=GoogleFeed(r)
+				except Exception:
+					if r.find('401 Client Error')!=-1:
+						self.logger.debug('got 401 error, try login ...')
+						self.login(True)
+						continue
+				else:
+					self._continuation=x.get_continuation()
+					return x.get_entries()
+
+		return None
+
+
+
+	def getTagList(self):
+		'''获取tag列表'''
+		args={'output':'json',
+		       'client':self.__class__.CLIENT_ID,
+           'ck': '%.3f'%(time.time(),)
+		       }
+		url='?'.join((self.__class__.URL_GR_API_TAG_LIST,urllib.parse.urlencode(args)))
+		headers=[('Authorization','GoogleLogin auth=%s'%(self._auth,))]
+		r,_=self.getResponse(url,None,headers)
+		if r:
+			r=r.decode()
+##			self.logger.debug('return %s',r)
+			data=json.loads(r)
+			for item in data['tags']:
+				self.logger.debug('%s=%s',item['id'],item['sortid'])
+
+
+
+	def getSubscriptionList(self):
+		'''获取订阅的rss地址列表'''
+		args={'output':'json',
+		       'client':self.__class__.CLIENT_ID,
+           'ck': '%.3f'%(time.time(),)
+		       }
+		url='?'.join((self.__class__.URL_GR_API_SUBSCRIPTION_LIST,urllib.parse.urlencode(args)))
+		headers=[('Authorization','GoogleLogin auth=%s'%(self._auth,))]
+		r,_=self.getResponse(url,None,headers)
+		if r:
+			r=r.decode()
+##			self.logger.debug('return %s',r)
+			data=json.loads(r)
+			self.logger.debug('total subscription : %d',len(data['subscriptions']))
+			for item in data['subscriptions']:
+				cl=item['categories']
+				for c in cl:
+					self.logger.debug('%s(%s)',c['id'],c['label'])
+				t=int(item['firstitemmsec'])/1000.0
+				d=datetime.datetime.fromtimestamp(t)
+				self.logger.debug('%s: %s %s at %s\n',item['id'],item['title'],item['sortid'],d.strftime("%Y-%m-%d %H:%M:%S"))
+
+	def getToken(self,force=True):
+		if self._token and (not force):
+			self.logger.debug('no need get token')
+			return True
+
+		for _ in range(3):
+			headers=[('Authorization','GoogleLogin auth=%s'%(self._auth,))]
+			r,_=self.getResponse(self.__class__.URL_GR_TOKEN,None,headers)
+			if r:
+				r=r.decode()
+				if r.find('401 Client Error')!=-1:
+					self.logger.debug('got 401 error, try login ...')
+					self.login(True)
+					continue
+				self._token=r
+				self.logger.debug('new token=%s',self._token)
+				return True
+
+		return False
+
+	def editTag(self,entry,add,remove,action,source,token=None):
+		'''更改item的tag'''
+		for _ in range(3):
+			if not token:
+				if not self._token:
+					self.getToken()
+				token=self._token
+
+			headers=[('Authorization','GoogleLogin auth=%s'%(self._auth,))]
+
+			data={'i':entry,
+				    'a':add,
+				    'ac':action,
+				    'T':token,
+				    's':s,
+				    'async':'true',
+				    }
+			if remove:
+				data['r']=remove
+			r,_=self.getResponse(self.__class__.URL_GR_EDIT_TAG+'?client='+self.__class__.CLIENT_ID,data,headers)
+			if r:
+				r=r.decode()
+				if r=='OK':
+					self.logger.debug('edit tag succ~')
+					return True
+				else:
+					if r.find('401 Client Error')!=-1:
+						self.logger.debug('got 401 error, try login ...')
+						self.login(True)
+						continue
+					self.logger.debug('edit tag failed!')
+					return False
+
+
+
+	def getUnreadCount(self):
+		args={'output':'json',
+		      'all': True,
+		       'client':self.__class__.CLIENT_ID,
+           'ck': '%.3f'%(time.time(),)
+		       }
+		url='?'.join((self.__class__.URL_GR_API_UNREAD_COUNT,urllib.parse.urlencode(args)))
+		for _ in range(3):
+			headers=[('Authorization','GoogleLogin auth=%s'%(self._auth,))]
+			r,_=self.getResponse(url,None,headers)
+			if r:
+				r=r.decode()
+##				self.logger.debug('return %s',r)
+				try:
+					data=json.loads(r)
+				except ValueError:
+					if r.find('401 Client Error')!=-1:
+						self.logger.debug('got 401 error, try login ...')
+						self.login(True)
+						continue
+				else:
+##					self.logger.debug('%s=%s','max',data['max'])
+					return data
+
+##			for item in data['unreadcounts']:
+##				t=int(item['newestItemTimestampUsec'])/1000000.0
+##				d=datetime.datetime.fromtimestamp(t)
+##				self.logger.debug('%s: %s %s',item['id'],item['count'],d.strftime("%Y-%m-%d %H:%M:%S"))
+
+		return None
+
+	def getAuthInfo(self):
+		return self._auth
+
+	def setAuthInfo(self,auth):
+		self._auth=auth
+		self._signed_in=True
+
+C4GRApi.getReadingList=C4GRApi.checkLogin(C4GRApi.getReadingList)
+C4GRApi.getTagList=C4GRApi.checkLogin(C4GRApi.getTagList)
+C4GRApi.getSubscriptionList=C4GRApi.checkLogin(C4GRApi.getSubscriptionList)
+C4GRApi.editTag=C4GRApi.checkLogin(C4GRApi.editTag)
+C4GRApi.getUnreadCount=C4GRApi.checkLogin(C4GRApi.getUnreadCount)
+
+
+class RSSFile(object):
+	'''封装rss条目，以类似文件的形式使用'''
+	def __init__(self,email,pwd,cookiefile):
+		self.logger=logging.getLogger(self.__class__.__name__)
+		self.gr=C4GRApi(email,pwd,cookiefile)
+		self.continuation=None
+		self.itemlist=[]
+		self.maxidx=len(self.itemlist) # 每次实际获取到的item
+		self.curidx=0 # 要显示的每次实际获取到的item中的索引
+		self.actualmax=len(self.itemlist) # 目前为止总共从server获取了多少
+		self.totalcuridx=0 # 记录server端实际上总共有多少
+		self.pCount=re.compile('user/(\d{20})/state/com.google/reading-list')
+
+	def __iter__(self):
+		return self
+
+	def __next__(self):
+		if self.curidx>=self.maxidx:
+			if self.maxidx==0: # 只第一次时获取一次
+				self.updateCount()
+
+			if self.actualmax>0 and self.actualmax>(self.totalcuridx+self.maxidx): # 尝试获取更多
+				self.totalcuridx+=self.maxidx
+				self.logger.debug('try to get more items...')
+				self.itemlist=self.gr.getReadingList(20 if self.actualmax-self.totalcuridx>20 else self.actualmax-self.totalcuridx)
+				self.maxidx=len(self.itemlist)
+				self.curidx=0
+				self.logger.debug('got %d this time',self.maxidx)
+			else:
+				self.logger.debug('got all ~')
+
+		if self.curidx<self.maxidx:
+			self.curidx+=1
+			return self.itemlist[self.curidx-1]
+		else:
+			raise StopIteration()
+
+	def __len__(self):
+		return len(self.itemlist)
+
+	def __getitem__(self,key):
+		return self.itemlist[key]
+
+	def getActualMax(self):
+		return self.actualmax
+
+	def getIdx(self):
+##		return self.curidx-1
+		return self.totalcuridx+self.curidx-1
+
+	def getAuthInfo(self):
+		return self.gr.getAuthInfo()
+
+	def setAuthInfo(self,auth):
+		return self.gr.setAuthInfo(auth)
+
+	def updateCount(self):
+		'''更新 self.actualmax '''
+		data=self.gr.getUnreadCount()
+		if not data:
+			self.logger.debug('can\'t got actualmax!')
+		else:
+			for eh in data['unreadcounts']:
+				if self.pCount.search(eh['id']):
+					self.actualmax=eh['count']
+					self.logger.debug('total %d unread',self.actualmax)
+					break
+
+
 if __name__ == '__main__':
-	t=StartDictFile(r'D:\Program Files\StarDict\dic\stardict-langdao-ec-gb-2.4.2\langdao-ec-gb.ifo')
-	t.readIFO()
-	t.readIDX()
-	print(t.getMeaning('test'))
+	logging.basicConfig(level=logging.DEBUG,format='%(thread)d %(message)s')
+	t=C4GRApi('email','pwd','')
+##	t.login()
+##	t.getTagList()
+	t.getUnreadCount()
+##	t.getSubscriptionList()
+##	t.getReadingList()
+	input('press ENTER to exit...')
+##	t=StartDictFile(r'D:\Program Files\StarDict\dic\stardict-langdao-ec-gb-2.4.2\langdao-ec-gb.ifo')
+##	t.readIFO()
+##	t.readIDX()
+##	print(t.getMeaning('test'))

@@ -4,12 +4,13 @@ import tkinter.font as tkFont
 import tkinter.filedialog as tkFileDialog
 import tkinter.messagebox as tkMessageBox
 import tkinter.simpledialog as tkSimpleDialog
-import tkinter.ttk as ttk
+##import tkinter.ttk as ttk
 
 import json
 import logging
 import os
 import datetime
+import time
 from util.ToolTip import ToolTip
 from util.HyperlinkManager import HyperlinkManager
 import tkinter.colorchooser as tkColorChooser
@@ -20,6 +21,7 @@ from util.MeaningTip import MeaningTip
 from contentcontainer import WordFile
 from contentcontainer import SubtitleFile
 from contentcontainer import StartDictFile
+from contentcontainer import RSSFile
 
 class BasePanel(object):
 	def __init__(self,name,section,root):
@@ -45,11 +47,11 @@ class BasePanel(object):
 
 	def bindLeftMouse(self):
 		self.logger.info('bind leftmouse')
-		self.draggableCtrl.bind('<ButtonPress-1>', self.onLeftMouse)
+		self.draggableCtrl.bind('<ButtonPress-1>', self.onLeftMouse,add='+')
 		self.draggableCtrl.bind('<ButtonRelease-1>',self.onLeftMouse)
-		self.draggableCtrl.bind('<Motion>',self.onLeftMouse)
-		self.draggableCtrl.bind('<Leave>',self.onLeftMouse)
-		self.draggableCtrl.bind('<Enter>',self.onLeftMouse)
+		self.draggableCtrl.bind('<Motion>',self.onLeftMouse,add='+')
+		self.draggableCtrl.bind('<Leave>',self.onLeftMouse,add='+')
+		self.draggableCtrl.bind('<Enter>',self.onLeftMouse,add='+')
 
 	def bindLeftMouseDbClick(self):
 		self.logger.info('bind leftmouse db click')
@@ -160,7 +162,6 @@ class BasePanel(object):
 
 	def show(self):
 		self.root.attributes("-alpha", self.c.alpha) # use transparency level 0.1 to 1.0 (no transparency)
-		pass
 
 class RecitePanel(BasePanel):
 	def __init__(self,name,section,root):
@@ -615,11 +616,45 @@ class SubtitlePanel(BasePanel):
 
 
 class ReaderPanel(BasePanel):
+	def __init__(self,name,section,root):
+		BasePanel.__init__(self,name,section,root)
+
+		self.content=None # 内容容器
+		self.curContent={'google_id':'0',
+		                 'published':time.time(),
+		                 'link':'http://code.google.com/p/mytestzone/',
+		                 'title':'my_panel rss panel, loading ...',
+		                 'content':'my_panel 1.0~',
+		                 'author':'kevin'
+		                 } # 当前显示的item
+		self.timerid=None
+		self.text_tag='tag-rss'
+		self.ft = tkFont.Font(family = 'Fixdsys',size = 20,weight = tkFont.BOLD)
+		self.text=tkinter.Text(self.root,font=self.ft,width=50,height=1,padx=2,pady=2,relief=tkinter.FLAT,takefocus=0,wrap=None,exportselection=0,cursor='left_ptr')
+##		print('=%d'%(self.text.winfo_reqheight(),))
+		self.text.insert(tkinter.INSERT,'MyPanel v0.1 powered by Python~')
+		self.text.pack(expand=tkinter.YES,fill=tkinter.BOTH)
+		self.draggableCtrl=self.text
+
+		self.hl=HyperlinkManager(self.text)
+		self.iconLink=tkinter.PhotoImage(file=os.path.join(os.path.join(os.path.abspath('.'),'icon'),'link.gif'))
+
+		# 设置tooltip
+		self.tooltiptext=tkinter.StringVar()
+		ft = tkFont.Font(family = 'Fixdsys',size = 12,weight = tkFont.BOLD)
+		self.tt=ToolTip(self.text,follow_mouse=0,font=ft,wraplength=self.root.winfo_screenwidth()/3,textvariable=self.tooltiptext)
+
 	def loadCfg(self,cfg,section):
 		BasePanel.loadCfg(self,cfg,section)
 		self.c.cur=cfg.getint(section,'cur')
 		self.c.interval=cfg.getint(section,'interval')
 		self.c.check_interval=cfg.get(section,'check_interval',900)
+		self.c.email=cfg.get(section,'email')
+		self.c.pwd=cfg.get(section,'pwd')
+		self.c.cookiefile=cfg.get(section,'cookiefile')
+		if not os.path.isabs(self.c.cookiefile):
+			self.c.cookiefile=os.path.join(os.path.abspath('.'),self.c.cookiefile)
+		self.c.auth=cfg.get(section,'auth','')
 
 	def saveCfg(self,cfg,section=None):
 		BasePanel.saveCfg(self,cfg,section)
@@ -628,6 +663,19 @@ class ReaderPanel(BasePanel):
 		cfg.set(section,'cur',str(self.c.cur))
 		cfg.set(section,'interval',str(self.c.interval))
 		cfg.set(section,'check_interval',str(self.c.check_interval))
+		cfg.set(section,'email',self.c.email)
+		cfg.set(section,'pwd',self.c.pwd)
+		cfg.set(section,'cookiefile',self.c.cookiefile)
+		self.c.auth=self.content.getAuthInfo()
+		cfg.set(section,'auth',self.c.auth)
+
+	def applyCfg(self):
+		BasePanel.applyCfg(self)
+		self.content=RSSFile(self.c.email,self.c.pwd,self.c.cookiefile)
+		if self.c.auth:
+			self.content.setAuthInfo(self.c.auth)
+		self.text.configure(fg=self.c.fg)
+		self.text.configure(bg=self.c.bg)
 
 	def onCmdChooseRss(self):
 		'''rss选择'''
@@ -636,6 +684,143 @@ class ReaderPanel(BasePanel):
 		if r:
 			tkMessageBox.showinfo(message=r)
 			# TODO: 实现解析rss并依次显示，自己过滤/高亮指定关键字/正则的条目
+
+	def createMenu(self,mainmenu):
+		BasePanel.createMenu(self,mainmenu)
+		if not self.c.enabled:
+			if self.cur_list_menu:
+				mainmenu.index(END)
+
+
+		self.menu=tkinter.Menu(mainmenu,tearoff=False)
+
+		self.cur_list_menu=tkinter.Menu(self.menu,tearoff=False)
+		for idx,i in enumerate(self.c.file):
+			self.cur_list_menu.add_radiobutton(label=os.path.split(i[0])[1],command=self.onCmdSwitchFile,
+				value=i[0],variable=self.vFile)
+			if idx==self.c.cur:
+				self.cur_list_menu.invoke(idx)
+		self.menu.add_cascade(label='files...',menu=self.cur_list_menu)
+
+		for k,v,c in (
+								('bg color ...',self.onCmdChooseColor,'bg'),
+								('fg color ...',self.onCmdChooseColor,'fg'),
+								):
+			self.menu.add_command(label = k,command = lambda v=v,c=c:v(c))
+			self.menu.add_separator()
+		mainmenu.add_cascade(label = '%s config '%(self.title,),menu = self.menu)
+
+	def show(self):
+		BasePanel.show(self)
+		self.curgeometry=[self.text.winfo_reqwidth(),self.text.winfo_reqheight()]
+		self.text.pack(expand=True,fill=tkinter.BOTH)
+		self.root.geometry('%dx%d'%(self.curgeometry[0],self.curgeometry[1]))
+
+	def hide(self):
+		BasePanel.hide(self)
+		self.text.pack_forget()
+
+	def showNext(self):
+		try:
+			t=next(self.content)
+		except StopIteration:
+			print('stoped.')
+			self.stat=const.StatStopped
+		else:
+			self.curContent=t
+			self.updatePanel()
+
+	def updatePanel(self):
+		BasePanel.updatePanel(self)
+
+		progress='[%d/%d] '%(self.content.getIdx()+1,self.content.getActualMax())
+
+		maxwidth=self.ft.measure(progress+self.curContent['title']+' ') # 最大行需要宽度
+		linecnt=1
+		# 计算行数
+		maxwidth+=2+2+2+2 # 总宽度 (算上两边的 paddingx + borderwidth)
+		max_width_allowed=self.root.winfo_screenwidth()-self.root.winfo_rootx() # 最大允许总宽度：不超过屏幕最右边
+		if maxwidth>max_width_allowed: # 需要调整
+			maxwidth=max_width_allowed
+			linecnt=0
+			maxwidth_text=max_width_allowed-2-2-2-2
+			# 判断需要多少行
+			for i in [progress+self.curContent['title']+' ',]:#lines:
+				# 每行需要拆为多少行
+				tmp=i[:]
+				while tmp:
+					while self.ft.measure(tmp) >maxwidth_text:
+						tmp=tmp[:-1]
+					linecnt+=1
+					i=i[len(tmp):]
+					tmp=i[:]
+
+		self.text.config(state=tkinter.NORMAL)
+		self.text.delete('0.0',tkinter.END)
+
+##		self.logger.debug('%s',self.curContent['title'])
+		self.text.insert(tkinter.INSERT,progress+self.curContent['title'])
+		tmp=self.text.index(tkinter.INSERT)
+		self.text.image_create(tkinter.INSERT,image=self.iconLink)
+
+		self.text.tag_delete(self.text_tag)
+		self.text.tag_add(self.text_tag,tmp)
+		self.text.tag_bind(self.text_tag,'<Enter>',self._enter,add='+')
+		self.text.tag_bind(self.text_tag,'<Leave>',self._leave,add='+')
+		self.text.tag_bind(self.text_tag,'<Button-1>', lambda ev,cid=self.curContent['google_id'],surl=self.curContent['link']:self.onCmdShowContent(ev,content_id=cid,url=surl),add='+')
+
+		self.text.config(state=tkinter.DISABLED)
+		self.tooltiptext.set('published: %s\nlink: %s\nid: %s\nauthor: %s'%(
+		  datetime.datetime.fromtimestamp(self.curContent['published']).strftime("%Y-%m-%d %H:%M:%S"),
+      self.curContent['link'],
+		  self.curContent['google_id'],
+		  self.curContent['author']))
+
+		self.curgeometry=[self.text.winfo_reqwidth(),self.text.winfo_reqheight()]
+		self.curgeometry=[maxwidth,linecnt*self.ft.metrics('linespace')+self.ft.metrics('descent')]
+		self.root.geometry('%dx%d'%(self.curgeometry[0],self.curgeometry[1]))
+		self.timerid=self.text.after(self.c.interval,self.showNext)
+
+	def onCmdShowContent(self,event,**kwargs):
+		self.logger.debug('%s event %s show content for %s',self,event,kwargs)
+
+	def _enter(self, event):
+##		self.logger.debug('~~')
+		self.text.config(cursor="hand2")
+	def _leave(self, event):
+##		self.logger.debug('``')
+		self.text.config(cursor="")
+
+	def pausePanel(self,new_stat):
+		BasePanel.pausePanel(self,new_stat)
+		if self.timerid:
+			self.text.after_cancel(self.timerid)
+			self.timerid=None
+
+	def onCmdChooseColor(self,extra):
+		self.logger.debug('extra=%s',extra)
+		if extra=='bg':
+			_,r=tkColorChooser.askcolor(self.c.bg,title='Choose background color')
+			if r:
+				self.c.bg=r
+				self.text.configure(bg=self.c.bg)
+		elif extra=='fg':
+			_,r=tkColorChooser.askcolor(self.c.fg,title='Choose foreground color')
+			if r:
+				self.c.fg=r
+				self.text.configure(fg=self.c.fg)
+
+	def onCmdSwitchFile(self):
+		self.logger.info('swith to dictionary file %s',self.vFile.get())
+		# 获取文件对应的索引
+		idx=[i for i,n in enumerate(self.c.file) if n[0]==self.vFile.get()][0]
+		self.c.cur=idx
+		self.cur_dict=StartDictFile(self.c.file[self.c.cur][0])
+		self.cur_dict.readIFO()
+		self.cur_dict.readIDX()
+		self.ac.setSuggestContent(self.cur_dict.getIdxList())
+
+
 
 class DictionaryPanel(BasePanel):
 	def __init__(self,name,section,root):
@@ -679,8 +864,8 @@ class DictionaryPanel(BasePanel):
 			if self.ac.active:
 				self.ac.DestroyGUI()
 			self.mt.hide()
-			
-		
+
+
 
 	def loadCfg(self,cfg,section):
 		BasePanel.loadCfg(self,cfg,section)
