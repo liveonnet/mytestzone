@@ -40,9 +40,11 @@ create_contents() : creates the contents of the tooltip window (by default a tki
 # Ideas gleaned from PySol
 
 import tkinter
+import logging
 
 class ToolTip(object):
 	def __init__(self, master, text='Your text here', delay=1500, **opts):
+		self.logger=logging.getLogger(self.__class__.__name__)
 		self.master = master
 		self._opts = {'anchor':'center', 'bd':1, 'bg':'lightyellow', 'delay':delay, 'fg':'black',\
 					  'follow_mouse':0, 'font':None, 'justify':'left', 'padx':4, 'pady':2,\
@@ -148,6 +150,8 @@ class ToolTip(object):
 			x = 0
 		elif x + twx > w:
 			x = w - twx
+
+		self.logger.debug('x,y=%d,%d,w,h=%d,%d',x,y,twx,twy)
 		return x, y
 
 	def create_contents(self):

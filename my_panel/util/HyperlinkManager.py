@@ -1,5 +1,7 @@
 #coding=utf-8
 # copy from http://effbot.org/zone/tkinter-text-hyperlink.htm
+import tkinter
+
 class HyperlinkManager(object):
 	def __init__(self, text):
 		self.text = text
@@ -27,7 +29,7 @@ class HyperlinkManager(object):
 		self.text.config(cursor="")
 
 	def _click(self, event):
-		for tag in self.text.tag_names(CURRENT):
+		for tag in self.text.tag_names(tkinter.CURRENT):
 			if tag[:6] == "hyper-":
-				self.links[tag]()
+				self.links[tag](self.text)
 				return

@@ -17,7 +17,7 @@ class MeaningTip(object):
 ##		self._id1 = self.master.bind("<Enter>", self.enter, '+')
 ##		self._id2 = self.master.bind("<Leave>", self.leave, '+')
 ##		self._id3 = self.master.bind("<ButtonPress>", self.leave, '+')
-		self._id3 = self.master.bind("<1>", self.hide, '+')
+##		self._id3 = self.master.bind("<1>", self.hide, '+')
 ##		self._id4 = self.master.bind("<Motion>", self.motion, '+')
 
 	def configure(self, **opts):

@@ -9,7 +9,10 @@ from io import BufferedReader
 import urllib, urllib.request, urllib.error, urllib.parse, http.cookiejar, json
 import time
 import datetime
-from feed import GoogleFeed
+##from feed import GoogleFeed
+import threading
+from _thread import start_new_thread
+from collections import deque
 
 class WordFile(object):
 	def __init__(self,fname):
@@ -432,6 +435,7 @@ class C4GRApi(object):
 	URL_GR_TOKEN='https://www.google.com/reader/api/0/token'
 
 	URL_GR_API_BASE='https://www.google.com/reader/api/0/'
+	URL_GR_API_STREAM_READING_LIST='https://www.google.com/reader/api/0/stream/contents/user/-/state/com.google/reading-list'
 	URL_GR_API_TAG_LIST=URL_GR_API_BASE+'tag/list'
 	URL_GR_API_UNREAD_COUNT=URL_GR_API_BASE+'unread-count'
 	URL_GR_API_SUBSCRIPTION_LIST=URL_GR_API_BASE+'subscription/list'
@@ -553,7 +557,7 @@ class C4GRApi(object):
 			except urllib.error.HTTPError as e:
 				logging.exception("请求出错！ %s",e)
 			except urllib.error.URLError as e:
-				logging.exception("访问地址 %s 失败! %s",url,e)
+				logging.info("访问地址 %s 失败! %s",url,e)
 			except IOError as e:
 				logging.info("IO错误! %s",e)
 			except Exception as e:
@@ -562,16 +566,50 @@ class C4GRApi(object):
 
 		return (res,rurl)
 
-	def getReadingList(self,n=20):
+##	def getReadingList(self,n=20):
+##		'''获取待读的item的列表'''
+##		args={'n':n,
+##		       'client':self.__class__.CLIENT_ID,
+##		       'r':'n',
+##           'ck': '%d'%(time.time(),),
+##		       'xt':'user/-/state/com.google/read'
+##		       }
+##		if self._continuation:
+##			args['c']=self._continuation
+##		url='?'.join((self.__class__.URL_GR_ATOM_STATE_READING_LIST,urllib.parse.urlencode(args)))
+##
+##		for _ in range(3):
+##			headers=[('Authorization','GoogleLogin auth=%s'%(self._auth,))]
+##			r,_=self.getResponse(url,None,headers)
+##			if r:
+##				r=r.decode()
+####				self.logger.debug('return %s',r)
+##				try:
+##					x=GoogleFeed(r)
+##				except Exception:
+##					if r.find('401 Client Error')!=-1:
+##						self.logger.debug('got 401 error, try login ...')
+##						self.login(True)
+##						continue
+##				else:
+##					self._continuation=x.get_continuation()
+##					return x.get_entries()
+##
+##		return None
+
+
+	def getReadingList(self,n=20,cont=True):
 		'''获取待读的item的列表'''
 		args={'n':n,
 		       'client':self.__class__.CLIENT_ID,
-		       'r':'d',
-           'ck': '%.3f'%(time.time(),)
+		       'r':'n',
+           'ck': '%d'%(time.time(),),
+		       'ot':'%d'%(time.mktime((datetime.date.today()-datetime.timedelta(30)).timetuple()),),  # 30天前
+		       'xt':'user/-/state/com.google/read'
 		       }
-		if self._continuation:
+		if self._continuation and cont:
 			args['c']=self._continuation
-		url='?'.join((self.__class__.URL_GR_ATOM_STATE_READING_LIST,urllib.parse.urlencode(args)))
+		url='?'.join((self.__class__.URL_GR_API_STREAM_READING_LIST,urllib.parse.urlencode(args)))
 
 		for _ in range(3):
 			headers=[('Authorization','GoogleLogin auth=%s'%(self._auth,))]
@@ -580,19 +618,17 @@ class C4GRApi(object):
 				r=r.decode()
 ##				self.logger.debug('return %s',r)
 				try:
-					x=GoogleFeed(r)
+					data=json.loads(r)
 				except Exception:
 					if r.find('401 Client Error')!=-1:
 						self.logger.debug('got 401 error, try login ...')
 						self.login(True)
 						continue
 				else:
-					self._continuation=x.get_continuation()
-					return x.get_entries()
+					self._continuation=data.get('continuation',None)
+					return data.get('items',None)
 
 		return None
-
-
 
 	def getTagList(self):
 		'''获取tag列表'''
@@ -654,7 +690,7 @@ class C4GRApi(object):
 
 		return False
 
-	def editTag(self,entry,add,remove,action,source,token=None):
+	def editTag(self,entry,add,remove,pos,source,token=None):
 		'''更改item的tag'''
 		for _ in range(3):
 			if not token:
@@ -664,16 +700,16 @@ class C4GRApi(object):
 
 			headers=[('Authorization','GoogleLogin auth=%s'%(self._auth,))]
 
-			data={'i':entry,
-				    'a':add,
-				    'ac':action,
+			data={'i':entry, # item的id
+				    'a':add, # 要添加 state
+				    'pos':pos,
 				    'T':token,
-				    's':s,
+				    's':source, # streamId
 				    'async':'true',
 				    }
 			if remove:
 				data['r']=remove
-			r,_=self.getResponse(self.__class__.URL_GR_EDIT_TAG+'?client='+self.__class__.CLIENT_ID,data,headers)
+			r,_=self.getResponse(self.__class__.URL_GR_API_EDIT_TAG+'?client='+self.__class__.CLIENT_ID,data,headers)
 			if r:
 				r=r.decode()
 				if r=='OK':
@@ -739,13 +775,15 @@ class RSSFile(object):
 	def __init__(self,email,pwd,cookiefile):
 		self.logger=logging.getLogger(self.__class__.__name__)
 		self.gr=C4GRApi(email,pwd,cookiefile)
-		self.continuation=None
 		self.itemlist=[]
 		self.maxidx=len(self.itemlist) # 每次实际获取到的item
 		self.curidx=0 # 要显示的每次实际获取到的item中的索引
 		self.actualmax=len(self.itemlist) # 目前为止总共从server获取了多少
 		self.totalcuridx=0 # 记录server端实际上总共有多少
-		self.pCount=re.compile('user/(\d{20})/state/com.google/reading-list')
+		self.plist=deque() # 需要设置为各种状态的item的列表
+		self.eventExit=threading.Event()
+		self.pCount=re.compile('user/(\d{20})/state/com.google/reading-list',re.I)
+		start_new_thread(self.thread4Plist,())
 
 	def __iter__(self):
 		return self
@@ -758,7 +796,7 @@ class RSSFile(object):
 			if self.actualmax>0 and self.actualmax>(self.totalcuridx+self.maxidx): # 尝试获取更多
 				self.totalcuridx+=self.maxidx
 				self.logger.debug('try to get more items...')
-				self.itemlist=self.gr.getReadingList(20 if self.actualmax-self.totalcuridx>20 else self.actualmax-self.totalcuridx)
+				self.itemlist=self.gr.getReadingList(20 if self.actualmax-self.totalcuridx>20 else self.actualmax-self.totalcuridx,False if self.maxidx==0 else True)
 				self.maxidx=len(self.itemlist)
 				self.curidx=0
 				self.logger.debug('got %d this time',self.maxidx)
@@ -797,10 +835,52 @@ class RSSFile(object):
 			self.logger.debug('can\'t got actualmax!')
 		else:
 			for eh in data['unreadcounts']:
-				if self.pCount.search(eh['id']):
+				if self.pCount.match(eh['id']):
 					self.actualmax=eh['count']
 					self.logger.debug('total %d unread',self.actualmax)
 					break
+			else:
+				self.logger.debug('0 unread?')
+
+	def setEditItem(self,item):
+		'''将对应的item加入self.plist队列'''
+		self.plist.append(item)
+
+	def setExit(self):
+		'''设置退出标志使工作线程退出'''
+		self.eventExit.set()
+
+	def checkRss(self):
+		'''重新获取待读条目'''
+		self.maxidx=0
+		self.curidx=0
+		self.totalcuridx=0
+		self.actualmax=0
+
+
+	def thread4Plist(self):
+		'''处理self.plist列表中item状态的线程'''
+		m=None
+		while True:
+			# do work
+			try:
+				m=self.plist.popleft()
+			except IndexError:
+				pass
+			else:
+				if m['a']=='read':
+					if not self.gr.editTag(m['i'],'user/-/state/com.google/read',None,m['pos'],m['s']):
+						self.plist.append(m) # 失败的重新插回
+				else:
+					self.logger.debug('action %s unknown!',m['a'])
+
+			# sleep
+			if self.eventExit.wait(3):
+				self.logger.debug('eventExit set, exit ...')
+				break
+
+
+
 
 
 if __name__ == '__main__':

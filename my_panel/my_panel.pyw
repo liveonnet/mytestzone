@@ -30,7 +30,7 @@ import re
 # 查询结果根据内容智能分行(*开头.结尾)的可行性试验
 # 切换不同字典时对当前suggestlist的设置是否正确？
 
-const.StatPlaying,const.StatStopped,const.StatPaused,const.StatPaused4Hover,const.StatPaused4Switch,const.StatDisabled=range(6)
+const.StatPlaying,const.StatStopped,const.StatPaused,const.StatPaused4Hover,const.StatPaused4Switch,StatPaused4Data,const.StatDisabled=range(7)
 
 
 class MyPanelApp(object):
@@ -108,7 +108,10 @@ class MyPanelApp(object):
 		self.rundate=time.strftime('%Y%m%d') # 记录执行日期
 
 		# 读取logging配置文件
-		logging_conf=self.cfg.get('account','logging_conf','logging.conf')
+		if len(sys.argv)>1 and sys.argv[1]=='noconsole': # 命令行中指定了不输出信息到控制台
+			logging_conf='logging_noconsole.conf'
+		else:
+			logging_conf=self.cfg.get('account','logging_conf','logging.conf')
 		if not os.path.isabs(logging_conf):
 			self.c.logging_conf=os.path.join(self.curdir,logging_conf)
 		else:
@@ -137,6 +140,9 @@ class MyPanelApp(object):
 		self.cfg.set('account','cur_panel',str(self.c.cur_panel))
 		for p in self.panellist:
 			p.saveCfg(self.cfg)
+
+		for p in self.panellist:
+			p.setExit()
 
 		self.cfg.write(codecs.open(self.inifile,'w',self.inifile_encoding))
 		self.root.quit()

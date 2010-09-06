@@ -11,6 +11,10 @@ import logging
 import os
 import datetime
 import time
+import webbrowser
+import xml.sax.saxutils
+from _thread import start_new_thread
+
 from util.ToolTip import ToolTip
 from util.HyperlinkManager import HyperlinkManager
 import tkinter.colorchooser as tkColorChooser
@@ -163,6 +167,9 @@ class BasePanel(object):
 	def show(self):
 		self.root.attributes("-alpha", self.c.alpha) # use transparency level 0.1 to 1.0 (no transparency)
 
+	def setExit(self):
+		pass
+
 class RecitePanel(BasePanel):
 	def __init__(self,name,section,root):
 		BasePanel.__init__(self,name,section,root)
@@ -300,7 +307,7 @@ class RecitePanel(BasePanel):
 
 		old_stat=self.stat
 		if self.stat==const.StatPlaying:
-			self.pausePanel(const.StatPaused4Switch)
+			self.pausePanel(const.StatPaused4Data)
 		self.c.cur=idx
 		self.content=t
 		if old_stat in (const.StatPlaying,const.StatStopped) :
@@ -620,13 +627,24 @@ class ReaderPanel(BasePanel):
 		BasePanel.__init__(self,name,section,root)
 
 		self.content=None # 内容容器
-		self.curContent={'google_id':'0',
+##		self.curContent={'google_id':'0',
+##		                 'published':time.time(),
+##		                 'link':'http://code.google.com/p/mytestzone/',
+##		                 'title':'my_panel rss panel, loading ...',
+##		                 'content':'my_panel 1.0~',
+##		                 'author':'kevin'
+##		                 } # 当前显示的item
+		self.startContent={'id':'0',
+		                 'alternate':[{'href':'http://code.google.com/p/mytestzone/','type':'text/html'},],
 		                 'published':time.time(),
-		                 'link':'http://code.google.com/p/mytestzone/',
-		                 'title':'my_panel rss panel, loading ...',
-		                 'content':'my_panel 1.0~',
+##		                 'link':'http://code.google.com/p/mytestzone/',
+		                 'title':'rss panel, loading data ...',
+		                 'summary':{'content':'my_panel 1.0~','direction':'ltr'},
+		                 'origin':{'streamId':0},
+##		                 'content':'my_panel 1.0~',
 		                 'author':'kevin'
 		                 } # 当前显示的item
+		self.curContent=self.startContent.copy()
 		self.timerid=None
 		self.text_tag='tag-rss'
 		self.ft = tkFont.Font(family = 'Fixdsys',size = 20,weight = tkFont.BOLD)
@@ -644,6 +662,11 @@ class ReaderPanel(BasePanel):
 		ft = tkFont.Font(family = 'Fixdsys',size = 12,weight = tkFont.BOLD)
 		self.tt=ToolTip(self.text,follow_mouse=0,font=ft,wraplength=self.root.winfo_screenwidth()/3,textvariable=self.tooltiptext)
 
+##		self.mtft = tkFont.Font(family = 'Fixdsys',size = 12) # meaningtip字体
+##		self.mt=MeaningTip(self.text,font=self.mtft) # 显示摘要
+
+		self.hm=HyperlinkManager(self.text)
+
 	def loadCfg(self,cfg,section):
 		BasePanel.loadCfg(self,cfg,section)
 		self.c.cur=cfg.getint(section,'cur')
@@ -655,6 +678,7 @@ class ReaderPanel(BasePanel):
 		if not os.path.isabs(self.c.cookiefile):
 			self.c.cookiefile=os.path.join(os.path.abspath('.'),self.c.cookiefile)
 		self.c.auth=cfg.get(section,'auth','')
+		self.c.browser2use=cfg.get(section,'browser2use',None)
 
 	def saveCfg(self,cfg,section=None):
 		BasePanel.saveCfg(self,cfg,section)
@@ -668,6 +692,7 @@ class ReaderPanel(BasePanel):
 		cfg.set(section,'cookiefile',self.c.cookiefile)
 		self.c.auth=self.content.getAuthInfo()
 		cfg.set(section,'auth',self.c.auth)
+		cfg.set(section,'browser2use',self.c.browser2use)
 
 	def applyCfg(self):
 		BasePanel.applyCfg(self)
@@ -705,6 +730,7 @@ class ReaderPanel(BasePanel):
 		for k,v,c in (
 								('bg color ...',self.onCmdChooseColor,'bg'),
 								('fg color ...',self.onCmdChooseColor,'fg'),
+		            ('refresh',self.onCmdGetRss,None),
 								):
 			self.menu.add_command(label = k,command = lambda v=v,c=c:v(c))
 			self.menu.add_separator()
@@ -726,6 +752,10 @@ class ReaderPanel(BasePanel):
 		except StopIteration:
 			print('stoped.')
 			self.stat=const.StatStopped
+			if self.curContent['id']==self.startContent['id']:
+				self.curContent['title']='rss panel, no rss item unread.'
+				self.updatePanel()
+				self.pausePanel(const.StatStopped)
 		else:
 			self.curContent=t
 			self.updatePanel()
@@ -733,7 +763,7 @@ class ReaderPanel(BasePanel):
 	def updatePanel(self):
 		BasePanel.updatePanel(self)
 
-		progress='[%d/%d] '%(self.content.getIdx()+1,self.content.getActualMax())
+		progress='[%d/%d]'%(self.content.getIdx()+1,self.content.getActualMax())
 
 		maxwidth=self.ft.measure(progress+self.curContent['title']+' ') # 最大行需要宽度
 		linecnt=1
@@ -759,30 +789,50 @@ class ReaderPanel(BasePanel):
 		self.text.delete('0.0',tkinter.END)
 
 ##		self.logger.debug('%s',self.curContent['title'])
-		self.text.insert(tkinter.INSERT,progress+self.curContent['title'])
+		self.text.insert(tkinter.INSERT,progress)
+##		self.text.insert(tkinter.INSERT,self.curContent['title'],self.hm.add(lambda ev,c=self.curContent.get('summary',{'content':'None','direction':'ltr'}):self.onCmdShowSummary(ev,summary=c)))
 		tmp=self.text.index(tkinter.INSERT)
 		self.text.image_create(tkinter.INSERT,image=self.iconLink)
-
-		self.text.tag_delete(self.text_tag)
-		self.text.tag_add(self.text_tag,tmp)
+		self.text.tag_delete(self.text_tag) # 删掉原tag
+		self.text.tag_add(self.text_tag,tmp) # 添加图标对应的tag
+##		self.text.tag_config(self.text_tag,background='#00ff00',bgstipple='gray25',relief=tkinter.GROOVE)
 		self.text.tag_bind(self.text_tag,'<Enter>',self._enter,add='+')
 		self.text.tag_bind(self.text_tag,'<Leave>',self._leave,add='+')
-		self.text.tag_bind(self.text_tag,'<Button-1>', lambda ev,cid=self.curContent['google_id'],surl=self.curContent['link']:self.onCmdShowContent(ev,content_id=cid,url=surl),add='+')
+		self.text.tag_bind(self.text_tag,'<Button-1>',
+		                   lambda ev,a='read',cid=self.curContent['id'],cpos=self.content.getIdx(),cs=self.curContent['origin']['streamId']:self.onCmdClickIcon(ev,a=a,i=cid,pos=cpos,s=cs),add='+')
+
+		self.text.insert(tkinter.INSERT,self.curContent['title'],self.hm.add(lambda ev,c=self.curContent['alternate'][0]['href']:self.onCmdOpenUrl(ev,url=c)))
 
 		self.text.config(state=tkinter.DISABLED)
-		self.tooltiptext.set('published: %s\nlink: %s\nid: %s\nauthor: %s'%(
+		# 设tooltip
+		self.tooltiptext.set('published: %s by %s\n%s'%(
 		  datetime.datetime.fromtimestamp(self.curContent['published']).strftime("%Y-%m-%d %H:%M:%S"),
-      self.curContent['link'],
-		  self.curContent['google_id'],
-		  self.curContent['author']))
+		  self.curContent.get('author','None'),
+      self.curContent['summary']['content'][:500] if 'summary' in self.curContent else 'No Summary' # 最多显示500个字符
+		  ))
 
-		self.curgeometry=[self.text.winfo_reqwidth(),self.text.winfo_reqheight()]
+##		self.curgeometry=[self.text.winfo_reqwidth(),self.text.winfo_reqheight()]
 		self.curgeometry=[maxwidth,linecnt*self.ft.metrics('linespace')+self.ft.metrics('descent')]
 		self.root.geometry('%dx%d'%(self.curgeometry[0],self.curgeometry[1]))
 		self.timerid=self.text.after(self.c.interval,self.showNext)
 
-	def onCmdShowContent(self,event,**kwargs):
-		self.logger.debug('%s event %s show content for %s',self,event,kwargs)
+	def onCmdOpenUrl(self,event,**kwargs):
+		url=xml.sax.saxutils.unescape(kwargs['url'])
+		self.logger.debug('open %s ...',url)
+		if self.c.browser2use:
+			start_new_thread(os.system,('%s %s'%(self.c.browser2use,url),))
+##			os.system('%s %s'%(self.c.browser2use,url))
+		else:
+			webbrowser.open_new_tab(url)
+
+	def onCmdShowSummary(self,event,**kwargs):
+		pass
+##		self.logger.debug('%s event %s show content for %s',self,event,kwargs)
+##		self.mt.show(kwargs['summary']['content'])
+
+	def onCmdClickIcon(self,event,**kwargs):
+##		self.logger.debug('%s event %s for %s',self,event,kwargs)
+		self.content.setEditItem({'a':kwargs['a'],'i':kwargs['i'],'pos':kwargs['pos'],'s':kwargs['s']})
 
 	def _enter(self, event):
 ##		self.logger.debug('~~')
@@ -819,6 +869,17 @@ class ReaderPanel(BasePanel):
 		self.cur_dict.readIFO()
 		self.cur_dict.readIDX()
 		self.ac.setSuggestContent(self.cur_dict.getIdxList())
+
+	def setExit(self):
+		BasePanel.setExit(self)
+		self.content.setExit()
+
+	def onCmdGetRss(self,extra):
+		self.pausePanel(const.StatPaused4Switch)
+		self.content.checkRss()
+		self.curContent=self.startContent.copy()
+		self.updatePanel()
+
 
 
 
@@ -857,6 +918,7 @@ class DictionaryPanel(BasePanel):
 		self.labelInput.bind("<Motion>",self.onLeftMouse,'+')
 
 		self.mt=MeaningTip(self.entryInput,font=self.mtft) # 显示释义
+		self.entryInput.bind("<1>", lambda ev:self.mt.hide(ev), '+')  # 当点击输入框时关闭释义窗口
 
 	def onLeftMouse(self,event):
 		BasePanel.onLeftMouse(self,event)
@@ -883,10 +945,10 @@ class DictionaryPanel(BasePanel):
 	def applyCfg(self):
 		BasePanel.applyCfg(self)
 		self.container.configure(bg=self.c.bg)
-		self.labelInput.configure(bg=self.c.bg)
-		self.entryInput.configure(bg=self.c.bg)
-		self.btnSearch.configure(bg=self.c.bg)
-		self.btnSave.configure(bg=self.c.bg)
+		self.labelInput.configure(bg=self.c.bg,fg=self.c.fg)
+		self.entryInput.configure(bg=self.c.bg,fg=self.c.fg)
+		self.btnSearch.configure(bg=self.c.bg,fg=self.c.fg)
+		self.btnSave.configure(bg=self.c.bg,fg=self.c.fg)
 
 
 	def createMenu(self,mainmenu):
