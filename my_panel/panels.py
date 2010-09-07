@@ -87,42 +87,42 @@ class BasePanel(object):
 ##				self.logger.info('offsetxy=(%d,%d)',self.offsetx,self.offsety)
 				xmvto=event.x_root-self.oldxy[0]-self.offsetx
 				ymvto=event.y_root-self.oldxy[1]-self.offsety
-##				print('Motion at (%d,%d) +%d+%d'%(event.x,event.y,xmvto,ymvto))
+##				self.logger.debug('Motion at (%d,%d) +%d+%d'%(event.x,event.y,xmvto,ymvto))
 				self.root.geometry('%dx%d+%d+%d'%(self.curgeometry[0],self.curgeometry[1],
 					xmvto,ymvto))
 		elif event.type=='7': # Enter
 			self.root.attributes("-alpha", 1) # use transparency level 0.1 to 1.0 (no transparency)
 			if self.stat==const.StatPlaying:
-				print('StatPlaying->StatPaused4Hover')
+				self.logger.debug('StatPlaying->StatPaused4Hover')
 				self.pausePanel(const.StatPaused4Hover)
 		elif event.type=='8': # Leave
 			self.root.attributes("-alpha", self.c.alpha) # use transparency level 0.1 to 1.0 (no transparency)
 			if not self.InDrag and self.stat==const.StatPaused4Hover:
-				print('StatPaused4Hover->StatPlaying')
+				self.logger.debug('StatPaused4Hover->StatPlaying')
 				self.updatePanel()
 		elif event.type=='4': # ButtonPress
 			if not self.InDrag:
-				print('ButtonPress at (%d,%d)-(%dx%d)'%(event.x,event.y,event.x_root,event.y_root))
+				self.logger.debug('ButtonPress at (%d,%d)-(%dx%d)'%(event.x,event.y,event.x_root,event.y_root))
 				self.InDrag=True
 				self.oldxy=[event.x,event.y]
 		elif event.type=='5': # ButtonRelease
 			if self.InDrag:
-##				print('ButtonRelease at (%d,%d)'%(event.x,event.y))
+##				self.logger.debug('ButtonRelease at (%d,%d)'%(event.x,event.y))
 				self.InDrag=False
 		else:
-			print(event.type)
-			print('in onLeftMouse (%d,%d)'%(event.x,event.y))
+			self.logger.debug(event.type)
+			self.logger.debug('in onLeftMouse (%d,%d)'%(event.x,event.y))
 
 	def onLeftMouseDbClick(self,event):
 		'''暂停/继续'''
 		if self.stat in (const.StatPlaying,const.StatPaused4Hover):
-			print('StatPlaying or StatPaused4Hover ->StatPaused')
+			self.logger.debug('StatPlaying or StatPaused4Hover ->StatPaused')
 			self.pausePanel(const.StatPaused)
 		elif self.stat==const.StatPaused:
-			print('StatPaused->StatPlaying')
+			self.logger.debug('StatPaused->StatPlaying')
 			self.updatePanel()
 		elif self.stat==const.StatStopped:
-			print('StatStopped->StatPlaying')
+			self.logger.debug('StatStopped->StatPlaying')
 			self.updatePanel()
 
 	def loadCfg(self,cfg,section=None):
@@ -236,7 +236,7 @@ class RecitePanel(BasePanel):
 		try:
 			t=next(self.content)
 		except StopIteration:
-			print('stoped.')
+			self.logger.debug('stoped.')
 			self.stat=const.StatStopped
 		else:
 			self.sText.set(t)
@@ -396,7 +396,7 @@ class SubtitlePanel(BasePanel):
 		self.vFile=tkinter.StringVar() # 当前显示的文件
 		self.ft = tkFont.Font(family = 'Fixdsys',size = 20,weight = tkFont.BOLD)
 		self.text=tkinter.Text(self.root,font=self.ft,width=50,height=1,padx=2,pady=2,relief=tkinter.FLAT,takefocus=0,wrap=None,exportselection=0,cursor='left_ptr')
-##		print('=%d'%(self.text.winfo_reqheight(),))
+##		self.logger.debug('=%d'%(self.text.winfo_reqheight(),))
 		self.text.insert(tkinter.INSERT,'MyPanel v0.1 powered by Python~')
 		self.text.pack(expand=tkinter.YES,fill=tkinter.BOTH)
 		self.draggableCtrl=self.text
@@ -427,8 +427,8 @@ class SubtitlePanel(BasePanel):
 
 	def applyCfg(self):
 		BasePanel.applyCfg(self)
-		self.text.configure(bg=self.c.bg)
-		self.text.configure(fg=self.c.fg)
+		self.text.configure(bg=self.c.bg,fg=self.c.fg)
+		self.text.configure(selectbackground=self.c.bg,selectforeground=self.c.fg,selectborderwidth=0)
 
 	def saveCfg(self,cfg,section=None):
 		BasePanel.saveCfg(self,cfg,section)
@@ -451,7 +451,7 @@ class SubtitlePanel(BasePanel):
 		try:
 			t=next(self.content)
 		except StopIteration:
-			print('stoped.')
+			self.logger.debug('stoped.')
 			self.stat=const.StatStopped
 		else:
 			lines=t.split(os.linesep)
@@ -650,7 +650,7 @@ class ReaderPanel(BasePanel):
 		self.text_tag='tag-rss'
 		self.ft = tkFont.Font(family = 'Fixdsys',size = 20,weight = tkFont.BOLD)
 		self.text=tkinter.Text(self.root,font=self.ft,width=50,height=1,padx=2,pady=2,relief=tkinter.FLAT,takefocus=0,wrap=None,exportselection=0,cursor='left_ptr')
-##		print('=%d'%(self.text.winfo_reqheight(),))
+##		self.logger.debug('=%d'%(self.text.winfo_reqheight(),))
 		self.text.insert(tkinter.INSERT,'MyPanel v0.1 powered by Python~')
 		self.text.pack(expand=tkinter.YES,fill=tkinter.BOTH)
 		self.draggableCtrl=self.text
@@ -700,8 +700,8 @@ class ReaderPanel(BasePanel):
 		self.content=RSSFile(self.c.email,self.c.pwd,self.c.cookiefile)
 		if self.c.auth:
 			self.content.setAuthInfo(self.c.auth)
-		self.text.configure(fg=self.c.fg)
-		self.text.configure(bg=self.c.bg)
+		self.text.configure(fg=self.c.fg,bg=self.c.bg)
+		self.text.configure(selectbackground=self.c.bg,selectforeground=self.c.fg,selectborderwidth=0)
 
 	def onCmdChooseRss(self):
 		'''rss选择'''
@@ -752,7 +752,7 @@ class ReaderPanel(BasePanel):
 		try:
 			t=next(self.content)
 		except StopIteration:
-			print('stoped.')
+			self.logger.debug('stoped.')
 			self.stat=const.StatStopped
 			if self.curContent['id']==self.startContent['id']:
 				self.curContent['title']='rss panel, no rss item unread.'
@@ -765,7 +765,8 @@ class ReaderPanel(BasePanel):
 	def updatePanel(self):
 		BasePanel.updatePanel(self)
 
-		progress='[%d/%d]'%(self.content.getIdx()+1,self.content.getActualMax())
+
+		progress='[%s/%d]'%(str(self.content.getIdx()+1).rjust(len(str(self.content.getActualMax()))),self.content.getActualMax())
 
 		maxwidth=self.ft.measure(progress+self.curContent['title']+' ') # 最大行需要宽度
 		linecnt=1
@@ -835,11 +836,17 @@ class ReaderPanel(BasePanel):
 
 	def onCmdClickIcon(self,event,**kwargs):
 ##		self.logger.debug('%s event %s for %s',self,event,kwargs)
+		if kwargs['i']==0:
+			self.logger.debug('not really rss item,ignore')
+			return
 		self.content.setEditItem({'a':kwargs['a'],'i':kwargs['i'],'pos':kwargs['pos'],'s':kwargs['s']})
+		self.pausePanel(const.StatPaused)
+		self.showNext()
+		self.pausePanel(const.StatPaused4Hover)
 
 	def _enter(self, event):
 ##		self.logger.debug('~~')
-		self.text.config(cursor="hand2")
+		self.text.config(cursor="X_cursor")
 	def _leave(self, event):
 ##		self.logger.debug('``')
 		self.text.config(cursor="")
@@ -911,6 +918,12 @@ class DictionaryPanel(BasePanel):
 		self.offsetx,self.offsety=0,0
 
 		self.entryInput=tkinter.Entry(self.container,font=self.ft,bd=0,textvariable=self.vInput)
+		self.FirstIn=True
+##		self.entryInput.bind('<Activate>',self.entryInput.focus_get,'+')
+##		self.entryInput.bind('<Activate>',lambda ev:self.entryInput.select_range(0, tkinter.END),'+')
+		self.entryInput.bind('<ButtonPress-1>',self._InputClickedByLeftMouse,'+')
+		self.entryInput.bind('<FocusIn>',self._InputFocusIn)
+##		self.entryInput.bind('<FocusOut>',self._InputFocusOut)
 		self.ac=AutoComplete(self.entryInput,self.onCmdSearch)#,open(r'd:\onlyword.txt').readlines()) # 自动完成
 		self.entryInput.grid(row=0,column=1,columnspan=1,sticky=tkinter.EW)
 
@@ -929,6 +942,25 @@ class DictionaryPanel(BasePanel):
 
 		self.mt=MeaningTip(self.entryInput,font=self.mtft) # 显示释义
 		self.entryInput.bind("<1>", lambda ev:self.mt.hide(ev), '+')  # 当点击输入框时关闭释义窗口
+
+	def _InputFocusIn(self,event):
+		self.logger.debug('focusin')
+		if self.FirstIn:
+			self.entryInput.select_range(0, tkinter.END)
+			self.FirstIn=False
+		else: self.FirstIn=True
+
+	def _InputClickedByLeftMouse(self,event):
+		self.logger.debug('FirstIn=%s',self.FirstIn)
+		if self.FirstIn:
+			self.logger.debug('select all~')
+			self.entryInput.select_range(0, tkinter.END)
+			self.labelInput.focus_set()
+
+##	def _InputFocusOut(self,event):
+##		self.logger.debug('focusout')
+
+
 
 	def onLeftMouse(self,event):
 		BasePanel.onLeftMouse(self,event)
@@ -1014,6 +1046,8 @@ class DictionaryPanel(BasePanel):
 
 	def hide(self):
 		BasePanel.hide(self)
+		self.ac.DestroyGUI()
+		self.mt.hide()
 		self.container.pack_forget()
 
 	def updatePanel(self):

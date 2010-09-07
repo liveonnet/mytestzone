@@ -693,7 +693,7 @@ class C4GRApi(object):
 			self.logger.debug('no need get token')
 			return True
 
-		for _ in range(3):
+		for _ in range(2):
 			headers=[('Authorization','GoogleLogin auth=%s'%(self._auth,))]
 			r,_=self.getResponse(self.__class__.URL_GR_TOKEN,None,headers)
 			if r:
@@ -710,7 +710,7 @@ class C4GRApi(object):
 
 	def editTag(self,entry,add,remove,pos,source,token=None):
 		'''更改item的tag'''
-		for _ in range(3):
+		for _ in range(4):
 			if not token:
 				if not self._token:
 					self.getToken()
@@ -733,13 +733,21 @@ class C4GRApi(object):
 				if r=='OK':
 					self.logger.debug('edit tag succ~')
 					return True
+				elif r.find('401 Client Error')!=-1:
+					self.logger.debug('got 401 error, try login ...')
+					self.login(True)
+					continue
 				else:
-					if r.find('401 Client Error')!=-1:
-						self.logger.debug('got 401 error, try login ...')
-						self.login(True)
-						continue
-					self.logger.debug('edit tag failed!')
-					return False
+					self.logger.debug('unknown response: %s',r) # 认为是失败
+					break
+
+			if r==b'':
+				self.logger.debug('return empty, need update token? try ...')
+				token,self._token=None,None
+				continue
+
+		self.logger.debug('edit tag failed!')
+		return False
 
 
 
@@ -869,7 +877,7 @@ class RSSFile(object):
 		self.eventExit.set()
 
 	def checkRss(self):
-		'''重新获取待读条目'''
+		'''reset内部数据结构以便触发重新获取待读条目'''
 		self.maxidx=0
 		self.curidx=0
 		self.totalcuridx=0
@@ -879,13 +887,16 @@ class RSSFile(object):
 	def thread4Plist(self):
 		'''处理self.plist列表中item状态的线程'''
 		m=None
+		pendingLen=None
 		while True:
 			# do work
 			try:
+				pendingLen=len(self.plist)
 				m=self.plist.popleft()
 			except IndexError:
 				pass
 			else:
+				self.logger.debug('total %d pending task',pendingLen)
 				if m['a']=='read':
 					if not self.gr.editTag(m['i'],'user/-/state/com.google/read',None,m['pos'],m['s']):
 						self.plist.append(m) # 失败的重新插回

@@ -151,7 +151,7 @@ class ToolTip(object):
 		elif x + twx > w:
 			x = w - twx
 
-		self.logger.debug('x,y=%d,%d,w,h=%d,%d',x,y,twx,twy)
+##		self.logger.debug('x,y=%d,%d,w,h=%d,%d',x,y,twx,twy)
 		return x, y
 
 	def create_contents(self):

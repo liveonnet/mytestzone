@@ -133,7 +133,7 @@ class MyPanelApp(object):
 
 
 	def onQuit(self):
-		print('onQuit')
+		self.logger.debug('onQuit')
 		if self.curpanel:
 			self.curpanel.pausePanel(const.StatStopped)
 		self.cfg.set('account','total_panel',str(self.c.total_panel))
