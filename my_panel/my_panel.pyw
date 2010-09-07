@@ -108,8 +108,8 @@ class MyPanelApp(object):
 		self.rundate=time.strftime('%Y%m%d') # 记录执行日期
 
 		# 读取logging配置文件
-		if len(sys.argv)>1 and sys.argv[1]=='noconsole': # 命令行中指定了不输出信息到控制台
-			logging_conf='logging_noconsole.conf'
+		if len(sys.argv)>1 and sys.argv[1]=='console': # 命令行中指定了输出信息到控制台
+			logging_conf='logging_console.conf'
 		else:
 			logging_conf=self.cfg.get('account','logging_conf','logging.conf')
 		if not os.path.isabs(logging_conf):

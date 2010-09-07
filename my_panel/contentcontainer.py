@@ -13,6 +13,8 @@ import datetime
 import threading
 from _thread import start_new_thread
 from collections import deque
+import mmap
+import codecs
 
 class WordFile(object):
 	def __init__(self,fname):
@@ -156,33 +158,22 @@ class StartDictFile(object):
 
 
 	def readIDX(self):
-		with BufferedReader(open(self.__idxFileName,'rb'),1048576) as f:
-			fsize=os.stat(self.__idxFileName).st_size
-			wordStr=""
-			wordDataOffset=0
-			wordDataSize=0
-			offsetLen=4
-			cnt=0
+		with open(self.__idxFileName,'rb') as f:
+			fmap=mmap.mmap(f.fileno(),0,access=mmap.ACCESS_READ)
+			cur=0
+##			wordStr=""
+##			wordDataOffset,wordDataSize=0,0
 			while True:
-				if f.tell()==fsize:
+				cur,wordStr=self.__readUntilZeroEx(fmap,cur)
+				if not wordStr:
+##					self.logger.debug("wordStr=\"\",break!")
+					fmap.close()
 					break
-				wordStr=self.__readUntilZero(f)
-				if wordStr=='':
-					self.logger.debug("wordStr=\"\",break!")
-					break
-				cnt+=1
-##				if cnt>=50:
-##					logging.debug("reach 100 items,break.")
-##					break
-##				if cnt%5000==0:
-##					logging.debug("processed %d",cnt)
-#				if len(wordStr)>=256:
-#					print str(len(wordStr))
-#					logging.debug("wordStr>=256! (%d)",len(wordStr))
-				wordDataOffset=self.__readNumber(f,self.__class__.__maxOffsetLen)
-				wordDataSize=self.__readNumber(f)
-				self.__dictIndex[wordStr]=(wordDataOffset,wordDataSize)
-#				logging.debug('%s=%d,%d',wordStr,wordDataOffset,wordDataSize)
+##				cur,self.__dictIndex[wordStr]=cur+8,\
+##					(fmap[cur]<<24|fmap[cur+1]<<16|fmap[cur+2]<<8|fmap[cur+3],\
+##					fmap[cur+4]<<24|fmap[cur+5]<<16|fmap[cur+6]<<8|fmap[cur+7])
+				cur,self.__dictIndex[wordStr]=self.__readNumbers(fmap,cur,self.__class__.__maxOffsetLen*2)
+			fmap.close()
 
 		self.logger.debug("len(self.__dictIndex)=%d",len(self.__dictIndex))
 
@@ -205,11 +196,37 @@ class StartDictFile(object):
 
 		return strRtn.decode('utf-8')
 
+	def __readUntilZeroEx(self,f,pos,size=0):
+		if size:
+			return pos+size,f[pos:pos+size]
+
+		idx=f.find(b'\0',pos)
+		if idx!=-1:
+			return idx+1,f[pos:idx].decode('utf-8')
+		else:
+##			raise Exception('no zero found! cur %d',f.tell())
+			return pos,''
+
+##		idx=f.find(b'\0',pos)
+##		if idx!=-1:
+##			s=f.read(idx-pos).decode('utf-8')
+##			f.seek(1,os.SEEK_CUR)
+##			return s
+##		else:
+####			raise Exception('no zero found! cur %d',f.tell())
+##			return ''
+
 	def __readNumber(self,fileObj,numberSize=4):
 		strRtn=fileObj.read(numberSize)
 		intRtn=struct.unpack("!I",strRtn)[0]
 #		logging.debug("strRtn=|%s| intRtn=%d",' '.join(["%02X"%(ord(c)) for c in strRtn]),intRtn)
 		return intRtn
+
+	def __readNumbers(self,f,pos,numberSize=4):
+		strRtn=f[pos:pos+numberSize]
+		return pos+numberSize,struct.unpack("!II",strRtn)
+#		logging.debug("strRtn=|%s| intRtn=%d",' '.join(["%02X"%(ord(c)) for c in strRtn]),intRtn)
+##		return int1,int2
 
 	def getMeaning(self,strToSearch):
 		if not self.__dictIndex:
@@ -267,10 +284,11 @@ class StartDictFile(object):
 		return rslt
 
 
-	def __readDict_m(self,fileObj,offset,size,debug=False):
+	def __readDict_m(self,fileObj,offset,size):
 		# Word's pure text meaning.
 		# The data should be a utf-8 string ending with '\0'.'
-		strText=self.__readUntilZero(fileObj,size,debug).decode()
+##		strText=self.__readUntilZeroEx(fileObj,size).decode()
+		strText=fileObj.read(size).decode()
 ##		strText=strText.replace('\n','\\n')
 		return (len(strText)+1,strText)
 	def __readDict_l(self,fileObj,offset,size):
@@ -812,8 +830,8 @@ class RSSFile(object):
 	def __len__(self):
 		return len(self.itemlist)
 
-	def __getitem__(self,key):
-		return self.itemlist[key]
+##	def __getitem__(self,key):
+##		return self.itemlist[key]
 
 	def getActualMax(self):
 		return self.actualmax
@@ -885,14 +903,26 @@ class RSSFile(object):
 
 if __name__ == '__main__':
 	logging.basicConfig(level=logging.DEBUG,format='%(thread)d %(message)s')
-	t=C4GRApi('email','pwd','')
+##	t=C4GRApi('email','pwd','')
 ##	t.login()
 ##	t.getTagList()
-	t.getUnreadCount()
+##	t.getUnreadCount()
 ##	t.getSubscriptionList()
 ##	t.getReadingList()
-	input('press ENTER to exit...')
-##	t=StartDictFile(r'D:\Program Files\StarDict\dic\stardict-langdao-ec-gb-2.4.2\langdao-ec-gb.ifo')
-##	t.readIFO()
-##	t.readIDX()
-##	print(t.getMeaning('test'))
+
+
+	t=StartDictFile(r'D:\Program Files\StarDict\dic\stardict-langdao-ec-gb-2.4.2\langdao-ec-gb.ifo')
+	t.readIFO()
+	start=time.time()
+	t.readIDX()
+	print('%.3f'%(time.time()-start,))
+	print(t.getMeaning('test'))
+	import sys
+	sys.exit()
+
+	import cProfile,pstats
+	cProfile.runctx('''t.readIDX()''',globals(),locals(),r'd:\stardict-profile.txt')
+	p=pstats.Stats(r'd:\stardict-profile.txt')
+	p.sort_stats('time', 'cum').print_stats('')
+
+##	input('press ENTER to exit...')

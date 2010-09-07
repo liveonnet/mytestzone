@@ -14,6 +14,7 @@ import time
 import webbrowser
 import xml.sax.saxutils
 from _thread import start_new_thread
+import subprocess
 
 from util.ToolTip import ToolTip
 from util.HyperlinkManager import HyperlinkManager
@@ -730,6 +731,7 @@ class ReaderPanel(BasePanel):
 		for k,v,c in (
 								('bg color ...',self.onCmdChooseColor,'bg'),
 								('fg color ...',self.onCmdChooseColor,'fg'),
+		            ('interval ...',self.onCmdChangeInterval,None),
 		            ('refresh',self.onCmdGetRss,None),
 								):
 			self.menu.add_command(label = k,command = lambda v=v,c=c:v(c))
@@ -820,7 +822,8 @@ class ReaderPanel(BasePanel):
 		url=xml.sax.saxutils.unescape(kwargs['url'])
 		self.logger.debug('open %s ...',url)
 		if self.c.browser2use:
-			start_new_thread(os.system,('%s %s'%(self.c.browser2use,url),))
+			start_new_thread(subprocess.Popen,([self.c.browser2use,url],),{'shell':False})
+##			start_new_thread(os.system,('%s %s'%(self.c.browser2use,url),))
 ##			os.system('%s %s'%(self.c.browser2use,url))
 		else:
 			webbrowser.open_new_tab(url)
@@ -869,6 +872,13 @@ class ReaderPanel(BasePanel):
 		self.cur_dict.readIFO()
 		self.cur_dict.readIDX()
 		self.ac.setSuggestContent(self.cur_dict.getIdxList())
+
+	def onCmdChangeInterval(self,extra=None):
+		'''设置刷新频率'''
+		r=tkSimpleDialog.askinteger('change update speed','input new interval(ms) (1000-10000):',
+			initialvalue=self.c.interval,maxvalue=10000,minvalue=1000)
+		if r:
+			self.c.interval=r
 
 	def setExit(self):
 		BasePanel.setExit(self)
