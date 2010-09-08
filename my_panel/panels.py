@@ -642,6 +642,7 @@ class ReaderPanel(BasePanel):
 		                 'title':'rss panel, loading data ...',
 		                 'summary':{'content':'my_panel 1.0~','direction':'ltr'},
 		                 'origin':{'streamId':0},
+		                 'my':{'pos':-1},
 ##		                 'content':'my_panel 1.0~',
 		                 'author':'kevin'
 		                 } # 当前显示的item
@@ -668,6 +669,8 @@ class ReaderPanel(BasePanel):
 
 		self.hm=HyperlinkManager(self.text)
 
+		self.flag4stat='>' # 通过不同字符在UI上表示暂停和继续两种状态
+
 	def loadCfg(self,cfg,section):
 		BasePanel.loadCfg(self,cfg,section)
 		self.c.cur=cfg.getint(section,'cur')
@@ -680,6 +683,9 @@ class ReaderPanel(BasePanel):
 			self.c.cookiefile=os.path.join(os.path.abspath('.'),self.c.cookiefile)
 		self.c.auth=cfg.get(section,'auth','')
 		self.c.browser2use=cfg.get(section,'browser2use',None)
+		self.c.excludewords=json.JSONDecoder().decode(cfg.get(section,'excludewords'))
+		self.c.highlightwords=json.JSONDecoder().decode(cfg.get(section,'highlightwords'))
+		self.c.hideduplicate=cfg.getboolean(section,'hideduplicate')
 
 	def saveCfg(self,cfg,section=None):
 		BasePanel.saveCfg(self,cfg,section)
@@ -749,6 +755,9 @@ class ReaderPanel(BasePanel):
 		self.text.pack_forget()
 
 	def showNext(self):
+		if self.curContent['id']!=self.startContent['id'] and (not self.curContent['my']['removed']):
+			self.logger.debug('del cur item before showNext')
+			self.content.setEditItem({'a':'read','i':self.curContent['id'],'pos':self.curContent['my']['pos'],'s':self.curContent['origin']['streamId']})
 		try:
 			t=next(self.content)
 		except StopIteration:
@@ -759,14 +768,22 @@ class ReaderPanel(BasePanel):
 				self.updatePanel()
 				self.pausePanel(const.StatStopped)
 		else:
+			# TODO: 重复标题检查
+			# 高亮检查
+			# 排除检查
+
+			t['my']={'removed':False,'pos':self.content.getIdx()}
 			self.curContent=t
 			self.updatePanel()
 
 	def updatePanel(self):
 		BasePanel.updatePanel(self)
 
+		progress='[%s%s%d]'%(str(self.curContent['my']['pos']+1).rjust(len(str(self.content.getActualMax()))),
+		                    self.flag4stat,
+		                    self.content.getActualMax())
+		self.flag4stat='>'
 
-		progress='[%s/%d]'%(str(self.content.getIdx()+1).rjust(len(str(self.content.getActualMax()))),self.content.getActualMax())
 
 		maxwidth=self.ft.measure(progress+self.curContent['title']+' ') # 最大行需要宽度
 		linecnt=1
@@ -802,7 +819,7 @@ class ReaderPanel(BasePanel):
 		self.text.tag_bind(self.text_tag,'<Enter>',self._enter,add='+')
 		self.text.tag_bind(self.text_tag,'<Leave>',self._leave,add='+')
 		self.text.tag_bind(self.text_tag,'<Button-1>',
-		                   lambda ev,a='read',cid=self.curContent['id'],cpos=self.content.getIdx(),cs=self.curContent['origin']['streamId']:self.onCmdClickIcon(ev,a=a,i=cid,pos=cpos,s=cs),add='+')
+		                   lambda ev,a='read',cid=self.curContent['id'],cpos=self.curContent['my']['pos'],cs=self.curContent['origin']['streamId']:self.onCmdClickIcon(ev,a=a,i=cid,pos=cpos,s=cs),add='+')
 
 		self.text.insert(tkinter.INSERT,self.curContent['title'],self.hm.add(lambda ev,c=self.curContent['alternate'][0]['href']:self.onCmdOpenUrl(ev,url=c)))
 
@@ -836,10 +853,18 @@ class ReaderPanel(BasePanel):
 
 	def onCmdClickIcon(self,event,**kwargs):
 ##		self.logger.debug('%s event %s for %s',self,event,kwargs)
+		if event.state&0x0001: # TODO: 点击的同时按下SHIFT，表示相同标题的也一并过滤
+			pass
+##			self.logger.debug('Shift pressed')
 		if kwargs['i']==0:
 			self.logger.debug('not really rss item,ignore')
 			return
+		elif self.curContent['my']['removed']:
+			self.logger.debug('already marked removed.')
+			return
 		self.content.setEditItem({'a':kwargs['a'],'i':kwargs['i'],'pos':kwargs['pos'],'s':kwargs['s']})
+		self.curContent['my']['removed']=True
+
 		self.pausePanel(const.StatPaused)
 		self.showNext()
 		self.pausePanel(const.StatPaused4Hover)
@@ -853,9 +878,21 @@ class ReaderPanel(BasePanel):
 
 	def pausePanel(self,new_stat):
 		BasePanel.pausePanel(self,new_stat)
+##		self.logger.debug('paused, %s,timerid=%s',new_stat,self.timerid)
 		if self.timerid:
 			self.text.after_cancel(self.timerid)
 			self.timerid=None
+
+		# 在UI上标识出暂停状态
+		if self.stat==const.StatPaused:
+##			self.logger.debug('to show paused icon???')
+			self.flag4stat='|'
+			self.updatePanel() # 为了显示暂停状态而额外刷新一次
+			BasePanel.pausePanel(self,new_stat)
+			if self.timerid:
+				self.text.after_cancel(self.timerid)
+				self.timerid=None
+
 
 	def onCmdChooseColor(self,extra):
 		self.logger.debug('extra=%s',extra)

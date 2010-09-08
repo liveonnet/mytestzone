@@ -11,6 +11,7 @@ from util.HyperlinkManager import HyperlinkManager
 from util.Cfg import Cfg
 from panels import RecitePanel,SubtitlePanel,ReaderPanel,DictionaryPanel
 import util.const as const
+import util.lockfile
 
 import os
 import time
@@ -156,8 +157,16 @@ class MyPanelApp(object):
 		self.root.quit()
 
 if __name__=='__main__':
-	m=MyPanelApp()
-	m.run()
+	locker = util.lockfile.LockFile(os.path.join(os.path.abspath('.'),'locked.txt'))
+	try:
+		locker.lock()
+	except Exception:
+##		print ('program have already run')
+		sys.exit()
+	else:
+##		print ('successful')
+		m=MyPanelApp()
+		m.run()
 
 	input('press ENTER to exit...')
 

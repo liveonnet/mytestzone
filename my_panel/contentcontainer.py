@@ -207,15 +207,6 @@ class StartDictFile(object):
 ##			raise Exception('no zero found! cur %d',f.tell())
 			return pos,''
 
-##		idx=f.find(b'\0',pos)
-##		if idx!=-1:
-##			s=f.read(idx-pos).decode('utf-8')
-##			f.seek(1,os.SEEK_CUR)
-##			return s
-##		else:
-####			raise Exception('no zero found! cur %d',f.tell())
-##			return ''
-
 	def __readNumber(self,fileObj,numberSize=4):
 		strRtn=fileObj.read(numberSize)
 		intRtn=struct.unpack("!I",strRtn)[0]
@@ -453,11 +444,12 @@ class C4GRApi(object):
 	URL_GR_TOKEN='https://www.google.com/reader/api/0/token'
 
 	URL_GR_API_BASE='https://www.google.com/reader/api/0/'
-	URL_GR_API_STREAM_READING_LIST='https://www.google.com/reader/api/0/stream/contents/user/-/state/com.google/reading-list'
+	URL_GR_API_STREAM_READING_LIST=URL_GR_API_BASE+'stream/contents/user/-/state/com.google/reading-list'
 	URL_GR_API_TAG_LIST=URL_GR_API_BASE+'tag/list'
 	URL_GR_API_UNREAD_COUNT=URL_GR_API_BASE+'unread-count'
 	URL_GR_API_SUBSCRIPTION_LIST=URL_GR_API_BASE+'subscription/list'
 	URL_GR_API_EDIT_TAG=URL_GR_API_BASE+'edit-tag'
+	URL_GR_API_MARK_ALL_AS_READ=URL_GR_API_BASE+'mark-all-as-read'
 
 	URL_GR_ATOM_BASE='https://www.google.com/reader/atom/'
 	URL_GR_ATOM_STATE_BASE=URL_GR_ATOM_BASE+'user/-/state/com.google/'
@@ -569,8 +561,11 @@ class C4GRApi(object):
 				r = self.opener.open(
 					req)#,
 ##					timeout=30)
-				res=r.read()
-				rurl=r.geturl()
+				if not r:
+					res,rurl=b'',''
+				else:
+					res=r.read()
+					rurl=r.geturl()
 				break
 			except urllib.error.HTTPError as e:
 				logging.exception("请求出错！ %s",e)
