@@ -823,6 +823,7 @@ class RSSFile(object):
 				self.logger.debug('got %d this time',self.maxidx)
 			else:
 				self.logger.debug('got all ~')
+				self.reset()
 
 		if self.curidx<self.maxidx:
 			self.curidx+=1
@@ -871,7 +872,7 @@ class RSSFile(object):
 		'''设置退出标志使工作线程退出'''
 		self.eventExit.set()
 
-	def checkRss(self):
+	def reset(self):
 		'''reset内部数据结构以便触发重新获取待读条目'''
 		self.maxidx=0
 		self.curidx=0

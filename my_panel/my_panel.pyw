@@ -31,7 +31,7 @@ import re
 # 查询结果根据内容智能分行(*开头.结尾)的可行性试验
 # 切换不同字典时对当前suggestlist的设置是否正确？
 
-const.StatPlaying,const.StatStopped,const.StatPaused,const.StatPaused4Hover,const.StatPaused4Switch,StatPaused4Data,const.StatDisabled=range(7)
+const.StatPlaying,const.StatStopped,const.StatPaused,const.StatPaused4Hover,const.StatPaused4Switch,const.StatPaused4Data,const.StatDisabled=range(7)
 
 
 class MyPanelApp(object):

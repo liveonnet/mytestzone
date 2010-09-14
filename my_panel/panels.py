@@ -642,7 +642,7 @@ class ReaderPanel(BasePanel):
 		                 'title':'rss panel, loading data ...',
 		                 'summary':{'content':'my_panel 1.0~','direction':'ltr'},
 		                 'origin':{'streamId':0},
-		                 'my':{'pos':-1},
+		                 'my':{'pos':-1,'removed':True},
 ##		                 'content':'my_panel 1.0~',
 		                 'author':'kevin'
 		                 } # 当前显示的item
@@ -758,15 +758,21 @@ class ReaderPanel(BasePanel):
 		if self.curContent['id']!=self.startContent['id'] and (not self.curContent['my']['removed']):
 			self.logger.debug('del cur item before showNext')
 			self.content.setEditItem({'a':'read','i':self.curContent['id'],'pos':self.curContent['my']['pos'],'s':self.curContent['origin']['streamId']})
+
+		oldstat=self.stat
 		try:
+			self.stat=const.StatPaused4Data
 			t=next(self.content)
+			self.stat=oldstat
 		except StopIteration:
 			self.logger.debug('stoped.')
-			self.stat=const.StatStopped
-			if self.curContent['id']==self.startContent['id']:
-				self.curContent['title']='rss panel, no rss item unread.'
-				self.updatePanel()
-				self.pausePanel(const.StatStopped)
+##			self.stat=const.StatStopped
+
+##			if self.curContent['id']==self.startContent['id']:
+			self.curContent=self.startContent.copy()
+			self.curContent['title']='rss panel, no rss item unread.'
+			self.updatePanel()
+			self.pausePanel(const.StatStopped)
 		else:
 			# TODO: 重复标题检查
 			# 高亮检查
@@ -774,6 +780,7 @@ class ReaderPanel(BasePanel):
 
 			t['my']={'removed':False,'pos':self.content.getIdx()}
 			self.curContent=t
+			self.stat=const.StatPlaying
 			self.updatePanel()
 
 	def updatePanel(self):
@@ -930,7 +937,7 @@ class ReaderPanel(BasePanel):
 
 	def onCmdGetRss(self,extra):
 		self.pausePanel(const.StatPaused4Switch)
-		self.content.checkRss()
+		self.content.reset()
 		self.curContent=self.startContent.copy()
 		self.updatePanel()
 
@@ -1181,7 +1188,7 @@ class DictionaryPanel(BasePanel):
 		self.ac.setSuggestContent(self.cur_dict.getIdxList())
 
 	def onCmdSearch(self,event=None):
-		text=self.entryInput.get()
+		text=self.entryInput.get().lower().strip()
 		self.logger.debug('查询 %s ...',text)
 		r=self.cur_dict.getMeaning(text)
 		if r:
