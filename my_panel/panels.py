@@ -184,6 +184,8 @@ class RecitePanel(BasePanel):
 		self.label.pack(expand=True,fill=tkinter.BOTH)
 		self.draggableCtrl=self.label
 
+		self.curContent=None # 当前显示的文字
+
 		# 设置tooltip
 		self.tooltiptext=tkinter.StringVar()
 		ft = tkFont.Font(family = 'Fixdsys',size = 12,weight = tkFont.BOLD)
@@ -222,36 +224,54 @@ class RecitePanel(BasePanel):
 ##			self.content=WordFile(self.c.file[self.c.cur][0])
 ##			self.content.setStart(self.c.file[self.c.cur][1])
 
-	def updatePanel(self):
-		BasePanel.updatePanel(self)
+	def showNext(self):
 		if not self.content:
-			self.curgeometry=[self.label.winfo_reqwidth(),self.label.winfo_reqheight()]
+			self.curgeometry=[self.text.winfo_reqwidth(),self.text.winfo_reqheight()]
 			self.logger.info('no content to show.')
 			return
-
 		if self.timerid:
 			self.label.after_cancel(self.timerid)
 			self.timerid=None
 
+		oldstat=self.stat
 		try:
+			self.stat=const.StatPaused4Data
 			t=next(self.content)
+			self.stat=oldstat
 		except StopIteration:
 			self.logger.debug('stoped.')
-			self.stat=const.StatStopped
-		else:
-			self.sText.set(t)
-			while True:
-				if self.label.winfo_reqwidth()<= self.root.winfo_screenwidth()-self.root.winfo_rootx():
-					break
-				t=t[:-1]
-				self.sText.set(t)
 
-			self.curgeometry=[self.label.winfo_reqwidth(),self.label.winfo_reqheight()]
-			self.root.geometry('%dx%d'%(self.curgeometry[0],self.curgeometry[1]))
-			self.logger.debug('%dx%d',self.curgeometry[0],self.curgeometry[1])
+			self.curContent='no content to show.'
+			self.updatePanel()
+			self.pausePanel(const.StatStopped)
+		else:
+			self.curContent=t
+			self.stat=const.StatPlaying
+
 			self.tooltiptext.set('%d/%d -- %s'%(self.content.curidx,self.content.maxidx,t))
 			self.c.file[self.c.cur][1]=self.content.getIdx()
-			self.timerid=self.label.after(self.c.interval,self.updatePanel)
+			self.updatePanel()
+
+
+	def updatePanel(self):
+		BasePanel.updatePanel(self)
+
+		if self.curContent is None:
+			self.timerid=self.label.after(10,self.showNext)
+			return
+
+		self.sText.set(self.curContent)
+		t=self.curContent[:]
+		while True:
+			if self.label.winfo_reqwidth()<= self.root.winfo_screenwidth()-self.root.winfo_rootx():
+				break
+			t=t[:-1]
+			self.sText.set(t)
+
+		self.curgeometry=[self.label.winfo_reqwidth(),self.label.winfo_reqheight()]
+		self.root.geometry('%dx%d'%(self.curgeometry[0],self.curgeometry[1]))
+		self.logger.debug('%dx%d',self.curgeometry[0],self.curgeometry[1])
+		self.timerid=self.label.after(self.c.interval,self.showNext)
 
 	def pausePanel(self,new_stat):
 		BasePanel.pausePanel(self,new_stat)
@@ -312,7 +332,7 @@ class RecitePanel(BasePanel):
 		self.c.cur=idx
 		self.content=t
 		if old_stat in (const.StatPlaying,const.StatStopped) :
-			self.updatePanel()
+			self.showNext()
 
 
 	def onCmdChooseFile(self,extra=None):
@@ -401,6 +421,8 @@ class SubtitlePanel(BasePanel):
 		self.text.pack(expand=tkinter.YES,fill=tkinter.BOTH)
 		self.draggableCtrl=self.text
 
+		self.curContent=None # 当前要显示的文字
+
 		# 设置tooltip
 		self.tooltiptext=tkinter.StringVar()
 		ft = tkFont.Font(family = 'Fixdsys',size = 12,weight = tkFont.BOLD)
@@ -438,8 +460,7 @@ class SubtitlePanel(BasePanel):
 		cfg.set(section,'interval',str(self.c.interval))
 		cfg.set(section,'recent_dir',self.c.recent_dir)
 
-	def updatePanel(self):
-		BasePanel.updatePanel(self)
+	def showNext(self):
 		if not self.content:
 			self.curgeometry=[self.text.winfo_reqwidth(),self.text.winfo_reqheight()]
 			self.logger.info('no content to show.')
@@ -448,53 +469,72 @@ class SubtitlePanel(BasePanel):
 			self.text.after_cancel(self.timerid)
 			self.timerid=None
 
+		oldstat=self.stat
 		try:
+			self.stat=const.StatPaused4Data
 			t=next(self.content)
+			self.stat=oldstat
 		except StopIteration:
 			self.logger.debug('stoped.')
-			self.stat=const.StatStopped
+
+			self.curContent='no content to show.'
+			self.updatePanel()
+			self.pausePanel(const.StatStopped)
 		else:
-			lines=t.split(os.linesep)
-			linecnt=len(lines) # 行数
+			self.curContent=t
+			self.stat=const.StatPlaying
 
-			maxwidth=max((self.ft.measure(i) for i in lines)) # 最大行需要宽度
-			maxwidth+=2+2+2+2 # 总宽度 (算上两边的 paddingx + borderwidth)
-
-			max_width_allowed=self.root.winfo_screenwidth()-self.root.winfo_rootx() # 最大允许总宽度：不超过屏幕最右边
-
-			if maxwidth>max_width_allowed: # 需要调整
-				maxwidth=max_width_allowed
-				linecnt=0
-				maxwidth_text=max_width_allowed-2-2-2-2
-				# 判断需要多少行
-				for i in lines:
-					# 每行需要拆为多少行
-					tmp=i[:]
-					while tmp:
-						while self.ft.measure(tmp) >maxwidth_text:
-							tmp=tmp[:-1]
-						linecnt+=1
-						i=i[len(tmp):]
-						tmp=i[:]
-
-			self.text.config(state=tkinter.NORMAL)
-			self.text.delete('0.0',tkinter.END)
-			self.text.insert(tkinter.INSERT,t)
-			self.text.config(state=tkinter.DISABLED)
-
-##			self.logger.info('font linespace=%d, text.winfo_reqheight()=%d',self.ft.metrics("linespace"),self.text.winfo_reqheight())
-##			x=self.text.winfo_reqheight()-self.ft.metrics("linespace")
-
-##			self.curgeometry=[self.text.winfo_reqwidth(),self.text.winfo_reqheight()*len(lines)]
-##			self.curgeometry=[maxwidth,self.text.winfo_reqheight()*linecnt-linecnt*4]
-##			self.curgeometry=[maxwidth,(self.text.winfo_reqheight()-x)*linecnt-x]
-			self.curgeometry=[maxwidth,linecnt*self.ft.metrics('linespace')+self.ft.metrics('descent')]
-			self.root.geometry('%dx%d'%(self.curgeometry[0],self.curgeometry[1]))
-##			self.text.see('end')
-			self.logger.debug('%dx%d ,lines=%d,maxlinelength=%d',self.curgeometry[0],self.curgeometry[1],linecnt,maxwidth)
-			self.tooltiptext.set('%d/%d -- %s'%(self.content.curidx,self.content.maxidx,t))
+			self.tooltiptext.set('%d/%d -- %s'%(self.content.curidx,self.content.maxidx,self.curContent))
 			self.c.file[self.c.cur][1]=self.content.getIdx()
-			self.timerid=self.text.after(self.c.interval,self.updatePanel)
+
+			self.updatePanel()
+
+	def updatePanel(self):
+		BasePanel.updatePanel(self)
+
+		if self.curContent is None:
+			self.timerid=self.text.after(10,self.showNext)
+			return
+
+		lines=self.curContent.split(os.linesep)
+		linecnt=len(lines) # 行数
+
+		maxwidth=max((self.ft.measure(i) for i in lines)) # 最大行需要宽度
+		maxwidth+=2+2+2+2 # 总宽度 (算上两边的 paddingx + borderwidth)
+
+		max_width_allowed=self.root.winfo_screenwidth()-self.root.winfo_rootx() # 最大允许总宽度：不超过屏幕最右边
+
+		if maxwidth>max_width_allowed: # 需要调整
+			maxwidth=max_width_allowed
+			linecnt=0
+			maxwidth_text=max_width_allowed-2-2-2-2
+			# 判断需要多少行
+			for i in lines:
+				# 每行需要拆为多少行
+				tmp=i[:]
+				while tmp:
+					while self.ft.measure(tmp) >maxwidth_text:
+						tmp=tmp[:-1]
+					linecnt+=1
+					i=i[len(tmp):]
+					tmp=i[:]
+
+		self.text.config(state=tkinter.NORMAL)
+		self.text.delete('0.0',tkinter.END)
+		self.text.insert(tkinter.INSERT,self.curContent)
+		self.text.config(state=tkinter.DISABLED)
+
+##		self.logger.info('font linespace=%d, text.winfo_reqheight()=%d',self.ft.metrics("linespace"),self.text.winfo_reqheight())
+##		x=self.text.winfo_reqheight()-self.ft.metrics("linespace")
+
+##		self.curgeometry=[self.text.winfo_reqwidth(),self.text.winfo_reqheight()*len(lines)]
+##		self.curgeometry=[maxwidth,self.text.winfo_reqheight()*linecnt-linecnt*4]
+##		self.curgeometry=[maxwidth,(self.text.winfo_reqheight()-x)*linecnt-x]
+		self.curgeometry=[maxwidth,linecnt*self.ft.metrics('linespace')+self.ft.metrics('descent')]
+		self.root.geometry('%dx%d'%(self.curgeometry[0],self.curgeometry[1]))
+##		self.text.see('end')
+		self.logger.debug('%dx%d ,lines=%d,maxlinelength=%d',self.curgeometry[0],self.curgeometry[1],linecnt,maxwidth)
+		self.timerid=self.text.after(self.c.interval,self.showNext)
 
 	def pausePanel(self,new_stat):
 		BasePanel.pausePanel(self,new_stat)
@@ -555,7 +595,7 @@ class SubtitlePanel(BasePanel):
 		self.c.cur=idx
 		self.content=t
 		if old_stat in (const.StatPlaying,const.StatStopped) :
-			self.updatePanel()
+			self.showNext()
 
 
 	def onCmdChooseFile(self,extra=None):
@@ -915,6 +955,7 @@ class ReaderPanel(BasePanel):
 				self.text.configure(fg=self.c.fg)
 
 	def onCmdSwitchFile(self):
+		# TODO: 完成正确代码
 		self.logger.info('swith to dictionary file %s',self.vFile.get())
 		# 获取文件对应的索引
 		idx=[i for i,n in enumerate(self.c.file) if n[0]==self.vFile.get()][0]
