@@ -27,6 +27,8 @@ from contentcontainer import WordFile
 from contentcontainer import SubtitleFile
 from contentcontainer import StartDictFile
 from contentcontainer import RSSFile
+import util.Tts
+
 
 class BasePanel(object):
 	def __init__(self,name,section,root):
@@ -49,6 +51,8 @@ class BasePanel(object):
 		self.oldxy=[0,0]
 		self.curgeometry=[320,240]
 		self.offsetx,self.offsety=0,0 # 被拖动的widget距离(top,left)的值
+
+		self.tts=None
 
 	def bindLeftMouse(self):
 		self.logger.info('bind leftmouse')
@@ -134,6 +138,9 @@ class BasePanel(object):
 		self.c.alpha=cfg.getfloat(section,'alpha')
 		self.c.fg=cfg.get(section,'fg')
 		self.c.bg=cfg.get(section,'bg')
+		self.c.tts_read=cfg.getboolean(section,'tts_read')
+		self.c.tts_chinese_voice=cfg.get(section,'tts_chinese_voice')
+		self.c.tts_english_voice=cfg.get(section,'tts_english_voice')
 		self.c.recent=json.JSONDecoder().decode(cfg.get(section,'recent'))
 
 	def applyCfg(self):
@@ -141,6 +148,9 @@ class BasePanel(object):
 		self.root.attributes("-alpha", self.c.alpha) # use transparency level 0.1 to 1.0 (no transparency)
 		self.title=self.c.title
 
+		if self.c.tts_read:
+			self.tts=util.Tts.TtsVoice()
+			self.tts.setVoiceCharacter(self.c.tts_chinese_voice,self.c.tts_english_voice)
 
 	def saveCfg(self,cfg,section=None):
 		if not section:
@@ -151,6 +161,9 @@ class BasePanel(object):
 		cfg.set(section,'alpha',str(self.c.alpha))
 		cfg.set(section,'fg',str(self.c.fg))
 		cfg.set(section,'bg',str(self.c.bg))
+		cfg.set(section,'tts_read',str(self.c.tts_read))
+		cfg.set(section,'tts_chinese_voice',self.c.tts_chinese_voice)
+		cfg.set(section,'tts_english_voice',self.c.tts_english_voice)
 		cfg.set(section,'recent',json.JSONEncoder(ensure_ascii =False,separators=(',', ':')).encode(self.c.recent).replace(',[',',\n['))
 
 	def pausePanel(self,new_stat):
@@ -195,6 +208,7 @@ class RecitePanel(BasePanel):
 ##		self.label.bind('<Enter>',self.onLeftMouse,'+')
 
 
+
 	def show(self):
 		BasePanel.show(self)
 		self.curgeometry=[self.label.winfo_reqwidth(),self.label.winfo_reqheight()]
@@ -215,6 +229,7 @@ class RecitePanel(BasePanel):
 		BasePanel.applyCfg(self)
 		self.label.configure(bg=self.c.bg)
 		self.label.configure(fg=self.c.fg)
+
 ##		if self.stat==const.StatPlaying:
 ##			self.pausePanel()
 ##			self.content=WordFile(self.c.file[self.c.cur][0])
@@ -233,6 +248,12 @@ class RecitePanel(BasePanel):
 			self.label.after_cancel(self.timerid)
 			self.timerid=None
 
+		# TTS
+		if self.c.tts_read and self.tts:
+			if self.tts.isSpeaking():
+				self.timerid=self.label.after(300,self.showNext)
+				return
+
 		oldstat=self.stat
 		try:
 			self.stat=const.StatPaused4Data
@@ -246,6 +267,15 @@ class RecitePanel(BasePanel):
 			self.pausePanel(const.StatStopped)
 		else:
 			self.curContent=t
+
+			# TTS
+			if self.c.tts_read and self.tts:
+##				tmp=self.tts.Q2B(t)
+				if t.find(' ')!=-1:
+					self.tts.Speak(t[t.find(' '):])
+				else:
+					self.tts.Speak(t)
+
 			self.stat=const.StatPlaying
 
 			self.tooltiptext.set('%d/%d -- %s'%(self.content.curidx,self.content.maxidx,t))
@@ -469,6 +499,12 @@ class SubtitlePanel(BasePanel):
 			self.text.after_cancel(self.timerid)
 			self.timerid=None
 
+		# TTS
+		if self.c.tts_read and self.tts:
+			if self.tts.isSpeaking():
+				self.timerid=self.text.after(300,self.showNext)
+				return
+
 		oldstat=self.stat
 		try:
 			self.stat=const.StatPaused4Data
@@ -482,6 +518,15 @@ class SubtitlePanel(BasePanel):
 			self.pausePanel(const.StatStopped)
 		else:
 			self.curContent=t
+
+			# TTS
+			if self.c.tts_read and self.tts:
+##				tmp=self.tts.Q2B(t)
+				if t.find(' ')!=-1:
+					self.tts.Speak(t[t.find(' '):])
+				else:
+					self.tts.Speak(t)
+
 			self.stat=const.StatPlaying
 
 			self.tooltiptext.set('%d/%d -- %s'%(self.content.curidx,self.content.maxidx,self.curContent))
@@ -795,6 +840,13 @@ class ReaderPanel(BasePanel):
 		self.text.pack_forget()
 
 	def showNext(self):
+		# TTS
+		if self.c.tts_read and self.tts:
+			if self.curContent['id']!=self.startContent['id'] and (not self.curContent['my']['removed']): # 并非是因为用户点击图标而跳到下一个
+				if self.tts.isSpeaking():
+					self.timerid=self.text.after(300,self.showNext)
+					return
+
 		if self.curContent['id']!=self.startContent['id'] and (not self.curContent['my']['removed']):
 			self.logger.debug('del cur item before showNext')
 			self.content.setEditItem({'a':'read','i':self.curContent['id'],'pos':self.curContent['my']['pos'],'s':self.curContent['origin']['streamId']})
@@ -820,6 +872,11 @@ class ReaderPanel(BasePanel):
 
 			t['my']={'removed':False,'pos':self.content.getIdx()}
 			self.curContent=t
+
+			# TTS
+			if self.c.tts_read and self.tts:
+				self.tts.Speak(t['title'],util.Tts.SVSFlagsAsync|util.Tts.SVSFPurgeBeforeSpeak)
+
 			self.stat=const.StatPlaying
 			self.updatePanel()
 
@@ -1233,6 +1290,10 @@ class DictionaryPanel(BasePanel):
 		self.logger.debug('查询 %s ...',text)
 		r=self.cur_dict.getMeaning(text)
 		if r:
+			# TTS
+			if self.c.tts_read and self.tts:
+				self.tts.Speak(text)
+
 			self.logger.debug('返回 %s',r.encode('gb18030'))
 			# 显示在text中
 			self.mt.show(r)
