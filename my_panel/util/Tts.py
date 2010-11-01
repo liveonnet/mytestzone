@@ -1,12 +1,12 @@
 #coding=utf-8
 import pythoncom
-from win32event import WaitForSingleObject
 import win32com.client
+from win32event import WaitForSingleObject,INFINITE
+
 import _thread
 import logging
 from collections import deque
 from time import sleep
-from win32event import WaitForSingleObject,INFINITE
 import re
 
 # reference: http://msdn.microsoft.com/en-us/library/ms723602%28VS.85%29.aspx
@@ -82,8 +82,12 @@ class TtsVoice(object):
 		self._eTagBegin,self._eTagEnd=None,'</rate></voice>'
 		self._cTagBegin,self._cTagEnd=None,'</rate></voice>'
 
-		self.pChinese=re.compile('([\u4e00-\u9fa5]+)+?')
-		self.pEnglish=re.compile('([^\u4e00-\u9fa5]+)+?')
+##		self.pChinese=re.compile('([\u4e00-\u9fa5]+)+?')
+##		self.pChinese=re.compile('([\u4e00-\u9fa5|0-9|？|?|.|。|，|,|"|\']+)+?')
+##		self.pEnglish=re.compile('([^\u4e00-\u9fa5]+)+?')
+##		self.pEnglish=re.compile('([a-z|A-Z]+)+?')
+		self.pChinese=re.compile('^([\u4e00-\u9fa5|0-9|?|。|:|.|,|“|”|"|\'|!|~|%|(|)|<|>|{|}|……|\[|\]|【|】|/| ]+)+?')
+		self.pEnglish=re.compile('^([^\u4e00-\u9fa5]+|\s)+?')
 
 		self.__pendingVoices=deque() # 待朗读队列
 
@@ -165,8 +169,11 @@ class TtsVoice(object):
 
 	def Speak(self,text,flags=SVSFlagsAsync):
 		'''并非真正朗读 只是将请求放入队列中'''
-		text=self.pEnglish.sub('%s\\g<1>%s'%(self._eTagBegin,self._eTagEnd),text)
-		text=self.pChinese.sub('%s\\g<1>%s'%(self._cTagBegin,self._cTagEnd),text)
+##		text=self.pEnglish.sub('%s\\g<1>%s'%(self._eTagBegin,self._eTagEnd),text)
+##		text=self.pChinese.sub('%s\\g<1>%s'%(self._cTagBegin,self._cTagEnd),text)
+		text=self.format(text)
+##		text=self._cTagBegin+text+self._cTagEnd
+##		self.logger.debug('speak: %s',text)
 
 		self.__pendingVoices.append((text,flags))
 		if self.__threadId==0 : # 建立朗读控制线程
@@ -200,6 +207,7 @@ class TtsVoice(object):
 				text,flag=self.__pendingVoices.popleft() # 取待朗读内容
 			except IndexError:
 				if self.__exitFlag==False:
+##					self.logger.debug('no speak text ...')
 					sleep(0.3)
 				else:
 					break # 退出线程
@@ -244,7 +252,9 @@ class TtsVoice(object):
 		'''全角转半角 除了空格其他的全角半角的公式为: 半角=全角-0xfee0'''
 		def _Q2B(c):
 			o=ord(c)
-			if o==0x3000: o=0x0020
+			if o in (0x201c,0x201d) : # “ 和 ”
+				o=0x22
+			elif o==0x3000: o=0x0020
 			else:	o-=0xfee0
 
 			if o<0x0020 or o>0x7e:      #转完之后不是半角字符返回原来的字符
@@ -253,8 +263,51 @@ class TtsVoice(object):
 
 		return ''.join([_Q2B(i) for i in s])
 
+	def format(self,text):
+		'''对最初的文字处理 字符转换、添加tts xml tag等'''
+		logging.debug('text: %s',text)
+		text=text.strip()
+		tmpText=self.Q2B(text)
+##		logging.debug('after Q2B: %s',tmpText)
+		tmpText=tmpText.replace('骨文','骨-文') # 特殊处理
+##		pEnglish=re.compile('^([a-z|A-Z]+)+?')
+		sl=[]
+		while tmpText!='':
+			m=self.pChinese.match(tmpText)
+			if m:
+				sl.append(self._cTagBegin+m.group(1)+self._cTagEnd)
+				tmpText=tmpText[len(m.group(1)):]
+			else:
+				m=self.pEnglish.match(tmpText)
+				if m:
+					sl.append(self._eTagBegin+m.group(1)+self._eTagEnd)
+					tmpText=tmpText[len(m.group(1)):]
+				else:
+					logging.debug('unknown string: %s',tmpText)
+
+		return ''.join(sl)
+
 if __name__ =='__main__':
+	import sys
 	spk=TtsVoice()
+
+	#
+	spk.setVoiceCharacter('VW Wang','VW Paul')
+##	spk.Speak('甲骨文')
+##	input('to Exit ...')
+##	sys.exit(0)
+
+	s=['医学人士称沉溺玩iPad可致手指肌肉萎缩',
+		'他承认自己失败了。',
+		'this is 测试 完毕 好处没有， feed ok！',
+		'[11.01][美国][动作][危情谍战][BD-R/950M][中英双字][无水印1024分辨率]',
+		'[11.01]【龙凤店】任贤齐/大S/罗家英.2010.BDRip.1024x576 国粤双语中字 1.2G',
+		'继续：一道Google笔试题目',
+		' Spring is a pretty season， 春天是一个好季节。']
+	for i in s:
+		print(spk.format(i))
+	input('to Exit ...')
+	sys.exit(0)
 
 	print('rate=%s volume=%s'%(spk.Rate,spk.Volume))
 	spk.ShowAllVoicesDesc()

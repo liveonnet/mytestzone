@@ -52,7 +52,10 @@ class BasePanel(object):
 		self.curgeometry=[320,240]
 		self.offsetx,self.offsety=0,0 # 被拖动的widget距离(top,left)的值
 
-		self.tts=None
+		# TTS
+##		self.tts=None
+		self.tts=util.Tts.TtsVoice()
+		self.tts_stat=tkinter.IntVar()
 
 	def bindLeftMouse(self):
 		self.logger.info('bind leftmouse')
@@ -148,8 +151,8 @@ class BasePanel(object):
 		self.root.attributes("-alpha", self.c.alpha) # use transparency level 0.1 to 1.0 (no transparency)
 		self.title=self.c.title
 
+		# TTS
 		if self.c.tts_read:
-			self.tts=util.Tts.TtsVoice()
 			self.tts.setVoiceCharacter(self.c.tts_chinese_voice,self.c.tts_english_voice)
 
 	def saveCfg(self,cfg,section=None):
@@ -173,7 +176,17 @@ class BasePanel(object):
 		self.stat=const.StatPlaying
 
 	def createMenu(self,mainmenu):
-		pass
+		self.menu=tkinter.Menu(mainmenu,tearoff=False)
+
+		# TTS
+		self.tts_stat.set(1 if self.c.tts_read else 0)
+		self.menu.add_checkbutton(label= 'TTS Voice',variable=self.tts_stat,command = lambda v=self.onCmdToggleTts,c=None:v(c))
+		self.menu.add_separator()
+
+	def onCmdToggleTts(self,extra=None):
+		self.c.tts_read=True if self.tts_stat.get()==1 else False
+		self.logger.debug('now self.c.tts_read=%s',self.c.tts_read)
+
 
 	def hide(self):
 		pass
@@ -182,6 +195,8 @@ class BasePanel(object):
 		self.root.attributes("-alpha", self.c.alpha) # use transparency level 0.1 to 1.0 (no transparency)
 
 	def setExit(self):
+		if self.c.tts_read and self.tts:
+			self.tts.stop()
 		pass
 
 class RecitePanel(BasePanel):
@@ -300,7 +315,7 @@ class RecitePanel(BasePanel):
 
 		self.curgeometry=[self.label.winfo_reqwidth(),self.label.winfo_reqheight()]
 		self.root.geometry('%dx%d'%(self.curgeometry[0],self.curgeometry[1]))
-		self.logger.debug('%dx%d',self.curgeometry[0],self.curgeometry[1])
+##		self.logger.debug('%dx%d',self.curgeometry[0],self.curgeometry[1])
 		self.timerid=self.label.after(self.c.interval,self.showNext)
 
 	def pausePanel(self,new_stat):
@@ -314,9 +329,6 @@ class RecitePanel(BasePanel):
 		if not self.c.enabled:
 			if self.cur_list_menu:
 				mainmenu.index(END)
-
-
-		self.menu=tkinter.Menu(mainmenu,tearoff=False)
 
 		self.cur_list_menu=tkinter.Menu(self.menu,tearoff=False)
 		for idx,i in enumerate(self.c.file):
@@ -593,9 +605,6 @@ class SubtitlePanel(BasePanel):
 			if self.cur_list_menu:
 				mainmenu.index(END)
 
-
-		self.menu=tkinter.Menu(mainmenu,tearoff=False)
-
 		self.cur_list_menu=tkinter.Menu(self.menu,tearoff=False)
 		for idx,i in enumerate(self.c.file):
 			self.cur_list_menu.add_radiobutton(label=os.path.split(i[0])[1],command=self.onCmdSwitchFile,
@@ -807,9 +816,6 @@ class ReaderPanel(BasePanel):
 		if not self.c.enabled:
 			if self.cur_list_menu:
 				mainmenu.index(END)
-
-
-		self.menu=tkinter.Menu(mainmenu,tearoff=False)
 
 		self.cur_list_menu=tkinter.Menu(self.menu,tearoff=False)
 		for idx,i in enumerate(self.c.file):
@@ -1140,9 +1146,6 @@ class DictionaryPanel(BasePanel):
 		if not self.c.enabled:
 			if self.cur_list_menu:
 				mainmenu.index(END)
-
-
-		self.menu=tkinter.Menu(mainmenu,tearoff=False)
 
 		self.cur_list_menu=tkinter.Menu(self.menu,tearoff=False)
 		for idx,i in enumerate(self.c.file):
