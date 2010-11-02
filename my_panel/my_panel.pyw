@@ -16,6 +16,9 @@ import util.lockfile
 import os
 import time
 import sys
+import imp
+imp.reload(sys)
+sys.setdefaultencoding('utf-8')
 import configparser
 import logging
 import logging.config

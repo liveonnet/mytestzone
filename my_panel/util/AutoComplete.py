@@ -218,6 +218,7 @@ class AutoComplete(object):
 			self.cbFunc()
 
 	def MakeGUI(self):
+##		self.logger.debug('makegui...')
 		x, y, cx, cy = self.win.bbox("insert")
 		self.logger.debug('x,y=%d,%d, cx,cy=%d,%d',x,y,cx,cy)
 		x = x + self.win.winfo_rootx() + 2

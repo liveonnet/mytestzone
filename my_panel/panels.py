@@ -735,7 +735,7 @@ class ReaderPanel(BasePanel):
 ##		                 'link':'http://code.google.com/p/mytestzone/',
 		                 'title':'rss panel, loading data ...',
 		                 'summary':{'content':'my_panel 1.0~','direction':'ltr'},
-		                 'origin':{'streamId':0},
+		                 'origin':{'streamId':0,'title':'No'},
 		                 'my':{'pos':-1,'removed':True},
 ##		                 'content':'my_panel 1.0~',
 		                 'author':'kevin'
@@ -848,14 +848,17 @@ class ReaderPanel(BasePanel):
 	def showNext(self):
 		# TTS
 		if self.c.tts_read and self.tts:
-			if self.curContent['id']!=self.startContent['id'] and (not self.curContent['my']['removed']): # 并非是因为用户点击图标而跳到下一个
-				if self.tts.isSpeaking():
-					self.timerid=self.text.after(300,self.showNext)
-					return
+			if self.curContent['id']!=self.startContent['id']: # 是真实条目而非起始页
+				if not self.curContent['my']['removed']: # 并非是因为用户点击图标而跳到下一个
+					if self.tts.isSpeaking():
+						self.timerid=self.text.after(300,self.showNext)
+						return
+				else: # 用户点击图标而跳到下一个，则跳过当前文本朗读
+					self.tts.Skip()
 
-		if self.curContent['id']!=self.startContent['id'] and (not self.curContent['my']['removed']):
-			self.logger.debug('del cur item before showNext')
-			self.content.setEditItem({'a':'read','i':self.curContent['id'],'pos':self.curContent['my']['pos'],'s':self.curContent['origin']['streamId']})
+##		if self.curContent['id']!=self.startContent['id'] and (not self.curContent['my']['removed']):
+##			self.logger.debug('del cur item before showNext')
+##			self.content.setEditItem({'a':'read','i':self.curContent['id'],'pos':self.curContent['my']['pos'],'s':self.curContent['origin']['streamId']})
 
 		oldstat=self.stat
 		try:
@@ -935,9 +938,10 @@ class ReaderPanel(BasePanel):
 
 		self.text.config(state=tkinter.DISABLED)
 		# 设tooltip
-		self.tooltiptext.set('published: %s by %s\n%s'%(
+		self.tooltiptext.set('published: %s by %s\nKind: %s\n%s'%(
 		  datetime.datetime.fromtimestamp(self.curContent['published']).strftime("%Y-%m-%d %H:%M:%S"),
 		  self.curContent.get('author','None'),
+		  self.curContent['origin']['title'],
       self.curContent['summary']['content'][:500] if 'summary' in self.curContent else 'No Summary' # 最多显示500个字符
 		  ))
 

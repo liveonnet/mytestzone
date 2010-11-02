@@ -86,19 +86,21 @@ class TtsVoice(object):
 ##		self.pChinese=re.compile('([\u4e00-\u9fa5|0-9|？|?|.|。|，|,|"|\']+)+?')
 ##		self.pEnglish=re.compile('([^\u4e00-\u9fa5]+)+?')
 ##		self.pEnglish=re.compile('([a-z|A-Z]+)+?')
-		self.pChinese=re.compile('^([\u4e00-\u9fa5|0-9|?|。|:|.|,|“|”|"|\'|!|~|%|(|)|<|>|{|}|……|\[|\]|【|】|/| ]+)+?')
+		self.pChinese=re.compile('^([\u4e00-\u9fa5|0-9|?|。|:|.|,|“|”|"|\'|!|~|%|(|)|{|}|……|\[|\]|【|】|/| ]+)+?')
 		self.pEnglish=re.compile('^([^\u4e00-\u9fa5]+|\s)+?')
 
 		self.__pendingVoices=deque() # 待朗读队列
 
-		self.__exitFlag=False
-		self.__stopFlag=False
-		self.__threadId=0
-		self.__voice=None
+		self.__exitFlag=False # 朗读控制线程在等待新文本时检测到此信号则退出
+		self.__stopFlag=False # 朗读控制线程在等待当前文本朗读完成时检测到此信号则退出
+		self.__threadId=0 # 朗读控制线程ID，为0表示无此线程
+		self.__voice=None # MS TTs的Voice对象
 		# 建立朗读控制线程
 		self.__threadId=_thread.start_new_thread(self.VoiceThread,())
 		while not self.__voice: # 等待线程中建立voice对象
 			sleep(0.3)
+
+		self.__skipFlag=False # 朗读控制线程在等待当前文本朗读完成时检测到此信号则跳过当前朗读并重置此值
 
 	def ShowAllVoicesDesc(self):
 		''' 將所有的Voice物件的資訊顯示出來。'''
@@ -180,8 +182,10 @@ class TtsVoice(object):
 			self.logger.debug('to create VoiceThread ...')
 			self.__threadId=_thread.start_new_thread(self.VoiceThread,())
 
-	def Skip(self,itemType,numItems):
-		return self.__voice.Skip(itemType,numItems)
+	def Skip(self):#,itemType,numItems):
+		self.__pendingVoices.clear()
+		self.__skipFlag=True
+##		return self.__voice.Skip(itemType,numItems)
 
 	def Pause(self):
 		return self.__voice.Pause()
@@ -216,9 +220,13 @@ class TtsVoice(object):
 				idx=self.__voice.Speak(text,flag)
 ##				self.logger.debug('idx=%d RuningState=%d',idx,self.__voice.Status.RunningState)
 				while self.__voice.Status.RunningState in (SRSEWaiting4Speak, SRSEIsSpeaking): # 等待此次朗读完成
-					if self.__stopFlag:
-##						self.__voice.Speak('shit',SVSFPurgeBeforeSpeak)
+					if self.__stopFlag: # 需要退出线程
 						break
+
+					if self.__skipFlag: # 需要跳过当前文本朗读
+						self.__voice.Speak('',SVSFPurgeBeforeSpeak)
+						self.__skipFlag=False
+
 					sleep(0.3)
 
 			if self.__stopFlag:
@@ -244,6 +252,7 @@ class TtsVoice(object):
 		'''立刻停止朗读'''
 		self.__stopFlag=True
 
+
 	def isSpeaking(self):
 		return self.__voice.Status.RunningState==SRSEIsSpeaking
 
@@ -254,6 +263,10 @@ class TtsVoice(object):
 			o=ord(c)
 			if o in (0x201c,0x201d) : # “ 和 ”
 				o=0x22
+			elif o == 0x300a : o=0x0020 # "《'
+			elif o == 0x300b: o= 0x0020 # '》'
+			elif o in (0x3c,0x3e): o=0x0020 # 过滤 < 和 >
+			elif o==0x30fb: o=0x0020     # '・'
 			elif o==0x3000: o=0x0020
 			else:	o-=0xfee0
 
@@ -265,10 +278,10 @@ class TtsVoice(object):
 
 	def format(self,text):
 		'''对最初的文字处理 字符转换、添加tts xml tag等'''
-		logging.debug('text: %s',text)
-		text=text.strip()
+##		logging.debug('text: %s',text)
 		tmpText=self.Q2B(text)
-##		logging.debug('after Q2B: %s',tmpText)
+		tmpText=tmpText.strip()
+		logging.debug('after Q2B: %s',tmpText)
 		tmpText=tmpText.replace('骨文','骨-文') # 特殊处理
 ##		pEnglish=re.compile('^([a-z|A-Z]+)+?')
 		sl=[]
@@ -293,9 +306,9 @@ if __name__ =='__main__':
 
 	#
 	spk.setVoiceCharacter('VW Wang','VW Paul')
-##	spk.Speak('甲骨文')
-##	input('to Exit ...')
-##	sys.exit(0)
+	spk.Speak(' 新苏黎世报:一个合格的共产主义者就是资本主义者')
+	input('to Exit ...')
+	sys.exit(0)
 
 	s=['医学人士称沉溺玩iPad可致手指肌肉萎缩',
 		'他承认自己失败了。',
@@ -303,7 +316,11 @@ if __name__ =='__main__':
 		'[11.01][美国][动作][危情谍战][BD-R/950M][中英双字][无水印1024分辨率]',
 		'[11.01]【龙凤店】任贤齐/大S/罗家英.2010.BDRip.1024x576 国粤双语中字 1.2G',
 		'继续：一道Google笔试题目',
-		' Spring is a pretty season， 春天是一个好季节。']
+		' Spring is a pretty season， 春天是一个好季节。',
+		'如何控制非信任代码的执行',
+		'《第十放映室（更新至10年10月31日，总第467期）》(10th Screening Room )[MP4]',
+		'比尔・盖茨透露其WP7手机型号:三星Focus',
+		'《SQLite 3结合PHP开发基础培训视频教程》(Lynda.com SQLite 3 with PHP Essential Training)[光盘镜像]']
 	for i in s:
 		print(spk.format(i))
 	input('to Exit ...')

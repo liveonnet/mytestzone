@@ -2740,14 +2740,16 @@ class Kaixin(object):
 				logging.info("%s 生命 %d, 能量 %d/%d, 级别 %d, 队员数 %d, 战斗值 %d, 经验 %d/%d.",task_key,myhealth,myenergy,maxenergy,mylevel,mynumber,stamina,myexperience,nextlevelexperience)
 				if stamina>0: # 战斗值不为0
 					if myhealth<80: # 生命值加满
-						self.spiderman_hospital(task_key)
+						if not self.spiderman_hospital(task_key):
+							stopfight=True
+							break
 
 					m=re.search(pFightList,t) # 找团队列表
 					if m:
 						fightlist=re.finditer(pEach,m.group(1))
 						for i in fightlist:
 							key,name,level,number=i.group('key'),i.group('name'),int(i.group('level')),int(i.group('number'))
-							if level<mylevel-1 and number<mynumber-5: # 选比自己差的团队
+							if level<mylevel-1 and number<mynumber-4: # 选比自己差的团队
 								flist.append((name,key,level,number))
 								logging.debug("%s 可选对战团队 %s(%d-%d)",task_key,name,level,number)
 
@@ -2786,11 +2788,19 @@ class Kaixin(object):
 									logging.info("%s 战斗值不足, 结束本轮战斗",task_key)
 									stopfight=True
 									break
+								elif rslt=='e13': # 达到升级标准需要刷新页面
+									logging.info("%s 达到升级标准, 需要刷新页面",task_key)
+									if not self.spiderman_uplevel(task_key):
+										stopfight=True
+										break
 
 								if myhealth<80:
 									logging.info("%s 生命值低于80, 去医疗...",task_key)
 									if self.spiderman_hospital(task_key):
 										myhealth=100
+									else:
+										stopfight=True
+										break
 
 						if stopfight==False: # 说明还可以再战斗
 							#logging.info("%s 可以继续战斗",task_key)
@@ -2823,7 +2833,7 @@ class Kaixin(object):
 		health 代表生命值改变（0或者负）
 		'''
 		logging.debug("%s 和 %s 交战...",task_key,name)
-		r = self.getResponse('http://www.kaixin001.com/!spiderman/!ajax_fight.php',{'cid':2,'objid':key,'tmp':"%.16f"%(random(),)})
+		r = self.getResponse('http://www.kaixin001.com/!spiderman/!ajax_fight.php',{'cid':4,'objid':key,'tmp':"%.16f"%(random(),)})
 
 		winorlose,exp,cash,combat,health=None,'0','0','0','0'
 
@@ -2854,6 +2864,8 @@ class Kaixin(object):
 				logging.info("%s 和 %s 交战结果: %s 经验 %s 现金 %s 战斗值 %s 生命值 %s",task_key,name,winorlose,exp,cash,combat,health)
 			except AttributeError:
 				logging.info("%s 解析战斗结果时失败, 返回:\n%s",task_key,r[0].decode())
+				if r[0].decode().startswith('e13'):
+					winorlose='e13'
 
 		return winorlose,exp,cash,combat,health
 
@@ -2871,11 +2883,23 @@ class Kaixin(object):
 			logging.info("%s 恢复生命值成功",task_key)
 			return True
 
-		pContent=re.complie(r'''<div class="f14" style="line-height:24px;">(.+?)</div>''',re.S|re.M)
-		logging.info("%s 恢复生命值返回:\n%s",re.search(pContent,t).group(1))
+		pContent=re.compile(r'''<div class="f14".*?>(.+?)</div>''',re.S|re.M)
+		logging.info("%s 恢复生命值返回:\n%s",task_key,re.search(pContent,t).group(1))
 
 		return False
 
+	def spiderman_uplevel(self,task_key=''):
+		'''升级刷新页面'''
+		logging.debug("%s 刷新升级页面...",task_key)
+		r = self.getResponse('http://www.kaixin001.com/!spiderman/!ajax_uplevel.php?%s'%
+	    (urllib.parse.urlencode(
+	    {'cid':4,'tmp':"%.16f"%(random(),)}),),
+	    None)
+
+		t=r[0].decode()
+		logging.info("%s 访问升级页面返回: %s",task_key,t)
+
+		return True
 
 
 	def cafe_getChef(self,cafeid,task_key=''):
