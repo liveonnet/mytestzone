@@ -2643,91 +2643,91 @@
 
 ## 尝试提取并解析USBTrace导出的m241Log data文件中的数据
 #def parseUsbData(ifn,ofn):
-	#p=re.compile(r'^\*\* Data \*\*\n(?P<data>[0-9A-F|\s]*)\n\n',re.M )
-	#fc=open(ifn).read()
-	#tmp=cStringIO.StringIO()
-	## 从USBTrace导出的文件中获取数据
-	#for i in re.finditer(p,fc):
-		#tmp.write(i.group('data'))
+		#p=re.compile(r'^\*\* Data \*\*\n(?P<data>[0-9A-F|\s]*)\n\n',re.M )
+		#fc=open(ifn).read()
+		#tmp=cStringIO.StringIO()
+		## 从USBTrace导出的文件中获取数据
+		#for i in re.finditer(p,fc):
+				#tmp.write(i.group('data'))
 
-	## 1) 初步解码，将十六进制的数据转换
-	#s=tmp.getvalue()
-	#tmp.close()
-	#outs=map(lambda x:unichr(int(x,16)),s.split())
+		## 1) 初步解码，将十六进制的数据转换
+		#s=tmp.getvalue()
+		#tmp.close()
+		#outs=map(lambda x:unichr(int(x,16)),s.split())
 
 ##	open(ur'd:\tmp.txt','w').write(''.join(outs))
 
-	## 2) 提取log data
-	#tmp=cStringIO.StringIO()
-	#for line in ''.join(outs).split('\r\n'):
-		#if line.startswith('$PMTK182,8,'):
-			#ls=line.split(',')
-			#rawdata=ls[3][:-3]
+		## 2) 提取log data
+		#tmp=cStringIO.StringIO()
+		#for line in ''.join(outs).split('\r\n'):
+				#if line.startswith('$PMTK182,8,'):
+						#ls=line.split(',')
+						#rawdata=ls[3][:-3]
 ##			rawdata=map(lambda x:unichr(int(x,16)),rawdata)
 ##			print ls[3][-10:-3]
-			#tmp.write(''.join(rawdata))
+						#tmp.write(''.join(rawdata))
 
-	## 3) 解码log data
-	#s=tmp.getvalue()
-	#tmp.close()
-	#s=[s[i:i+2] for i in xrange(0,len(s),2) ] # 两个char一组
-	#s=map(lambda x:chr(int(x,16)),s)
+		## 3) 解码log data
+		#s=tmp.getvalue()
+		#tmp.close()
+		#s=[s[i:i+2] for i in xrange(0,len(s),2) ] # 两个char一组
+		#s=map(lambda x:chr(int(x,16)),s)
 
-	## 保存解码后的文件
-	#with open(ofn,'w') as f:
-		#f.write(''.join(s))
+		## 保存解码后的文件
+		#with open(ofn,'w') as f:
+				#f.write(''.join(s))
 
 #def showdate(ifn):
-	#f=open(ifn,'rb')
-	#s=f.read()
-	#print 'size=',len(s)
-	#for i in xrange(0,len(s)-15,16):
-		##print i
+		#f=open(ifn,'rb')
+		#s=f.read()
+		#print 'size=',len(s)
+		#for i in xrange(0,len(s)-15,16):
+				##print i
 ##		if i>2000: break
-		#(tmp,)=struct.unpack_from('I',s,i)
+				#(tmp,)=struct.unpack_from('I',s,i)
 
-		#try:
-			##d=time.strftime('%Y%m%d-%H:%M:%S',time.localtime(tmp))
-			#d=time.strftime('%Y%m%d',time.localtime(tmp))
-		#except Exception,e:
-			#print 'exception,idx=%d,%s'%(idx,e)
-		#else:
-			#if d=='20091008':
-				#print 'idx=%d,%s'%(i,time.strftime('%Y%m%d-%H:%M:%S',time.localtime(tmp)))
+				#try:
+						##d=time.strftime('%Y%m%d-%H:%M:%S',time.localtime(tmp))
+						#d=time.strftime('%Y%m%d',time.localtime(tmp))
+				#except Exception,e:
+						#print 'exception,idx=%d,%s'%(idx,e)
+				#else:
+						#if d=='20091008':
+								#print 'idx=%d,%s'%(i,time.strftime('%Y%m%d-%H:%M:%S',time.localtime(tmp)))
 
 
 #def decodeTest(s):
-	#s=[s[i:i+2] for i in xrange(0,len(s),2) ] # 两个char一组
-	#s=map(lambda x:chr(int(x,16)),s)
-	#(tme,lat,lon,ele,crc)=struct.unpack('Iff3sc',''.join(s))
-	#ele=struct.unpack('f','0'+ele)
+		#s=[s[i:i+2] for i in xrange(0,len(s),2) ] # 两个char一组
+		#s=map(lambda x:chr(int(x,16)),s)
+		#(tme,lat,lon,ele,crc)=struct.unpack('Iff3sc',''.join(s))
+		#ele=struct.unpack('f','0'+ele)
 
-	## 计算校验和
-	#mycrc=0
-	#for i in xrange(15):
-		#mycrc^=ord(s[i])
-	##assert mycrc==ord(crc)
+		## 计算校验和
+		#mycrc=0
+		#for i in xrange(15):
+				#mycrc^=ord(s[i])
+		##assert mycrc==ord(crc)
 
-	#print '%06d) %s %.6f %.6f %.2f %.2X'% (1,
-		#time.strftime('%Y%m%d-%H:%M:%S',time.localtime(tme)),
-		#lat,lon,ele[0],ord(crc))
+		#print '%06d) %s %.6f %.6f %.2f %.2X'% (1,
+				#time.strftime('%Y%m%d-%H:%M:%S',time.localtime(tme)),
+				#lat,lon,ele[0],ord(crc))
 
 
 #if __name__ =='__main__':
-	#import re
-	#import cStringIO
-	#import struct
-	#import time
+		#import re
+		#import cStringIO
+		#import struct
+		#import time
 ##	parseUsbData(ur'E:\Proj\python\py-prj\usbtrace_export.txt',ur'd:\test.trl')
-	#showdate(ur'd:\test1.trl')
+		#showdate(ur'd:\test1.trl')
 
 ##	s='0627CD4A9B3520421E38E8420D0A0E43'
 ##	decodeTest(s)
 
-	##with open(ur'd:\test.trl','rb') as i:
-		##with open(ur'd:\test1.trl','wb') as o:
-			##s=i.read()
-			##o.write(s[0x03d0:0xedb5])
+		##with open(ur'd:\test.trl','rb') as i:
+				##with open(ur'd:\test1.trl','wb') as o:
+						##s=i.read()
+						##o.write(s[0x03d0:0xedb5])
 
 
 
@@ -2753,11 +2753,11 @@
 ## 如果该类的子类定义了一个__init__方法,那么它必须保证它的__init__方法
 ## 能够安全的对同一实例进行多次调用.
 #class Singleton(object):
-	#_singletons={}
-	#def __new__(cls,*args,**kwds):
-		#if not cls._singletons.has_key(cls): # 若还没有实例
-			#cls._singletons[cls]=object.__new__(cls) # 生成一个
-		#return cls._singletons[cls] # 返回这个实例
+		#_singletons={}
+		#def __new__(cls,*args,**kwds):
+				#if not cls._singletons.has_key(cls): # 若还没有实例
+						#cls._singletons[cls]=object.__new__(cls) # 生成一个
+				#return cls._singletons[cls] # 返回这个实例
 
 #s=Singleton()
 #print 'id(s)=',id(s)
@@ -2765,11 +2765,11 @@
 #print 'id(m)=',id(m)
 
 #class Child(Singleton):
-	#def __init__(self,name,value=10):
-		#self.name=name
-		#self.value=value
-	#def getId(self):
-		#return self.name
+		#def __init__(self,name,value=10):
+				#self.name=name
+				#self.value=value
+		#def getId(self):
+				#return self.name
 #x=Child('test 1')
 #print '\nid(x)=',id(x)
 #y=Child('test 2')
@@ -2815,14 +2815,196 @@
 
 ## 创建5×5的列表 的正确方法
 #a= [[0]*5]*5 # 错误的方法!!!
-#print 'a=',a
+#print ('a=',a)
 #a[2][3]=5
-#print 'a=',a # 此时 a 中的所有子列表的地4项都被赋值了
-
-#b = [[0]*5 for i in xrange(5)] # 正确的方法
-#print 'b=',b
+#print ('a=',a) # 此时 a 中的所有子列表的地4项都被赋值了
+#
+#b = [[0]*5 for i in range(5)] # 正确的方法
+#print ('b=',b)
 #b[2][3]=5
-#print 'b=',b # 此时只有第三个子列表的第4项被赋值
+#print ('b=',b) # 此时只有第三个子列表的第4项被赋值
+#
+#
+#
+## 看看是哪个类的类对象占用内存多
+#import gc
+#import sys
+#from collections import defaultdict
+#d = defaultdict(int)
+#objects = gc.get_objects()
+#print ('gc objects size: ', len(objects))
+#for o in objects:
+#		d[type(o)] += sys.getsizeof(o)
+#
+#from pprint import pprint
+#pprint(d)
+
+
+
+
+
+
+
+
+### 利用遗传算法解学生选导师分配问题 http://blog.stevenwang.name/ga-tss-455001.html
+##
+##import random
+##import math
+##import copy
+##
+##def loadData(path='d:'):
+##	teachers = []
+##	students = []
+##	teacherPlanCount = 0;
+##	studentCount = 0;
+##
+##	#导师及可带学生数目
+##	for line in open(path + '/teacher.data'):
+##		(id, count, major) = line.split(',')[0 : 3]
+##		teachers.append((id, int(count), major.rstrip()))
+##		teacherPlanCount += int(count)
+##
+##	#学生及选导师志愿情况
+##	for line in open(path + '/student.data'):
+##		(id, w1, w2, w3, major) = line.split(',')[0 : 5]
+##		students.append((id, (w1, w2, w3), major.rstrip()))
+##		studentCount += 1
+##
+##	return teachers, students, teacherPlanCount, studentCount
+##
+###输出结果
+##def printsolution(vec):
+##	slots = []
+##	#根据每个导师可带学生数建立工位序列
+##	for i in range(len(teachers)):
+##		slots += [i for j in range(teachers[i][1])]
+##
+##	#遍历每一名学生的选择情况
+##	for i in range(len(vec)):
+##		x = int(vec[i])
+##		#从工位序列中选择
+##		teacher = teachers[slots[x]][0]
+##		#输出学生及其被分配的导师
+##		print ('%s %s'%(students[i][0], teacher))
+##		#删除该工位
+##		del slots[x]
+##
+###成本函数
+##def teachercost(vec):
+##	cost = 0
+##	#建立工位序列
+##	slots = []
+##	for i in range(len(teachers)):
+##		slots += [i for j in range(teachers[i][1])]
+##
+##	#遍历每一名学生
+##	for i in range(len(vec)):
+##		x = int(vec[i])
+##		teacherName = teachers[slots[x]][0]
+##		teacherMajor = teachers[slots[x]][2]
+##		studentWill = students[i][1]
+##		studentMajor = students[i][2]
+##		#专业不符成本值为10000
+##		#第一志愿成本值为0，第二志愿成本值为1
+##		#第三志愿成本值为2，没选中成本为3
+##		if studentMajor not in teacherMajor:
+##			cost += 10000
+##		elif studentWill[0] == teacherName:
+##			cost += 0
+##		elif studentWill[1] == teacherName:
+##			cost += 1
+##		elif studentWill[2] == teacherName:
+##			cost += 2
+##		else:
+##			cost += 3
+##		#删除选中的工位
+##		del slots[x]
+##	return cost;
+##
+###遗传算法
+##def geneticoptimize(domain, costf, popsize = 5000, step = 1,
+##					mutprob = 0.2, elite = 0.4, maxiter = 100):
+##	#变异操作
+##	def mutate(vec):
+##		i = random.randint(0, len(domain) - 1)
+##		if random.random() < 0.5 and vec[i] > domain[i][0]:
+##			return vec[0 : i] + [vec[i] - step] + vec[i + 1 :]
+##		elif vec[i] < domain[i][1]:
+##			return vec[0 : i] + [vec[i] + step] + vec[i + 1 :]
+##
+##	#交叉操作
+##	def crossover(r1, r2):
+##		i = random.randint(1, len(domain) - 2)
+##		return r1[0 : i] + r2[i : ]
+##
+##	#构造初始种群
+##	pop = []
+##	for i in range(popsize):
+##		vec = [random.randint(domain[i][0], domain[i][1])
+##			   for i in range(len(domain))]
+##		pop.append(vec)
+##
+##	#每一代的胜出者数量
+##	topelite = int(elite * popsize)
+##
+##	#主循环
+##	for i in range(maxiter):
+##		scores = [(costf(v), v) for v in pop]
+##		scores.sort()
+##		ranked = [v for (s, v) in scores]
+##
+##		#保留胜出者开始
+##		pop = ranked[0 : topelite]
+##
+##		#添加变异和配对后的胜出者
+##		while len(pop) < popsize:
+##			if random.random() < mutprob:
+##				#变异
+##				c = random.randint(0, topelite)
+##				v = mutate(ranked[c])
+##				if v is not None:
+##					pop.append(v)
+##			else:
+##				#交叉
+##				c1 = random.randint(0, topelite)
+##				c2 = random.randint(0, topelite)
+##				pop.append(crossover(ranked[c1], ranked[c2]))
+##		#打印当前最优值
+##		print("%d : %d" % (i, scores[0][0]))
+##	return scores[0][1]
+##
+##teachers, students, teacherPlanCount, studentCount = loadData()
+##domain = [(0, teacherPlanCount - 1 - i)
+##		  for i in range(studentCount)]
+##s = geneticoptimize(domain, teachercost)
+##printsolution(s)
+
+
+
+
+### 测试 __getattr__ __getattribute__ __setattr__ __delattr__
+##class A(object):
+##	def __getattr__(self,name):
+##		print('in __getattr__ name=%s'%(name,))
+##		print('!!! no attribute %s, return -1 !!!'%(name,))
+##		return -1
+##	def __getattribute__(self,name):
+##		print('in __getattribute__ name=%s'%(name,))
+##		return object.__getattribute__(self,name)
+####		raise AttributeError # 导致__getattr__被调用
+##	def __setattr__(self,name,value):
+##		print('in __setattr__ name=%s, value=%s'%(name,value))
+##		object.__setattr__(self,name,value)
+##	def __delattr__(self,name):
+##		print('in __delattr__ name=%s'%(name,))
+##		object.__delattr__(self,name)
+##
+##
+##a=A()
+##a.p=5
+##print ('a.p=%d'%(a.p,))
+##del a.p
+##print ('a.p=%d'%(a.p,))
 
 
 
@@ -2836,7 +3018,359 @@
 
 
 
+### DNS本地代理
+### http://code.google.com/p/pydnsproxy/source/browse/trunk/dns.py
+##from socketserver	import *
+##from socket import *
+##
+##gl_remote_server = '208.67.222.222'
+##gl_remote_port=53
+##
+##class LocalDNSHandler(BaseRequestHandler):
+##	def setup(self):
+##		self.dnsserver = (gl_remote_server, gl_remote_port)
+##
+##	def handle(self):
+##		data, socket = self.request
+##		rspdata = self._getResponse(data)
+##		socket.sendto(rspdata, self.client_address)
+##
+##	def _getResponse(self, data):
+##		"Send client's DNS request (data) to remote DNS server, and return its response."
+##		sock = socket(AF_INET, SOCK_DGRAM) # socket for the remote DNS server
+##		sock.connect(self.dnsserver)
+##		sock.sendall(data)
+##		sock.settimeout(5)
+##		try:
+##			rspdata = sock.recv(65535)
+##		except Exception as e:
+##			print ('%s ignored.'%(e,))
+##			return ''
+##		# "delicious food" for GFW:
+##		while 1:
+##			sock.settimeout(0.4)
+##			try:
+##				rspdata = sock.recv(65535)
+##			except timeout:
+##				break
+##		sock.close()
+##		return rspdata
+##
+##class LocalDNSServer(ThreadingUDPServer):
+##	pass
+##
+##def main():
+##	dnsserver = LocalDNSServer(('127.0.0.1', gl_remote_port), LocalDNSHandler)
+##	dnsserver.serve_forever()
+##
+##if __name__ == '__main__':
+##	main()
 
 
 
 
+
+
+
+
+
+
+
+
+
+### 用 Python 的 Descriptor 特性解决一个变态的问题
+### http://kanrss.com/r/3101009#http://blog.csdn.net/lanphaday/archive/2010/12/02/6051201.aspx
+##class TestDescriptors(object):
+##	def __init__(self):
+##		self._data=None
+##	def __get__(self, instance, owner):
+##		print('int __get__,instance=%s, owner=%s'%(instance,owner))
+##		if len(self._data)==1:
+##			tmp=self._data[0]
+##			class Wrapper(tmp.__class__):
+##				def __iter__(obj):
+##					return self._data.__iter__()
+##				def next(obj):
+##					return self._data.next()
+##			return Wrapper(tmp)
+##		return self._data
+##
+##	def __set__(self, instance, value):
+##		print('in __set__, instance=%s, value=%s'%(instance,value))
+##		if isinstance(value,list):
+##			self._data=value
+##		else:
+##			self._data=[value]
+##
+##class T(object):
+##	item=TestDescriptors()
+##
+##t=T()
+##print('t=%s'%(t,))
+##t.item='test'
+##print(t.item)
+##print('e' in t.item)
+##for i in t.item:
+##	print(i)
+##
+##print('='*20)
+##t.item=['alpha','beta','gamma','delta','epsilon']
+##print(t.item)
+##print('gamma' in t.item)
+##for i in t.item:
+##	print(i)
+
+
+
+
+
+
+
+
+
+
+
+
+
+### 测试闭包
+##output = '<int %r id=%#0x val=%d>'
+##w = x = y = z = 1
+##
+##def f1():
+##	x = y = z = 2
+##
+##	def f2():
+##		y = z = 3
+##
+##		def f3():
+##			z = 4
+##			print (output % ('w', id(w), w))
+##			print (output % ('x', id(x), x))
+##			print (output % ('y', id(y), y))
+##			print (output % ('z', id(z), z))
+##
+##		clo = f3.__closure__
+##		if clo:
+##			print ("f3 closure vars: %s"%(','.join([str(c) for c in clo]),))
+##		else:
+##			print ("no f3 closure vars")
+##		f3()
+##
+##	clo = f2.__closure__
+##	if clo:
+##		print ("f2 closure vars: %s"%(','.join([str(c) for c in clo]),))
+##	else:
+##		print ("no f2 closure vars")
+##	f2()
+##
+##	clo = f1.__closure__
+##	if clo:
+##		print ("f1 closure vars: %s"%(','.join([str(c) for c in clo]),))
+##	else:
+##		print ("no f1 closure vars")
+##
+##f1()
+##
+
+
+
+
+
+
+
+
+
+
+
+### 非递归全排列算法,比我以前写的要高效得多！
+##def perm(L):
+##	result = [L[:1]]
+##	for i in L[1:]:
+##		result = [ ele[:j]+[i]+ele[j:] for ele in result for j in range(len(ele)+1) ]
+####	上面的语句等于：
+####	for i in L[1:]:
+####		tmpL = []
+####		for ele in result:
+####			for j in xrange(len(ele)+1):
+####				tmpL.append(ele[0:j]+[i]+ele[j:None])
+####		result = tmpL
+####	print result
+##	print ('%d'%(len(result),))
+##
+##perm(list(range(9)))
+##
+
+
+
+
+
+
+### 演示 super的使用和子类根据__mro__顺序调用各个基类的__init__
+##class base(object):
+##	def __init__(self):
+##		print ("base!")
+##
+##class child_a(base):
+##	def __init__(self):
+##		super(child_a, self).__init__()
+##		print ("child_a!")
+##
+##class child_b(base):
+##	def __init__(self):
+##		super(child_b, self).__init__()
+##		print ("child_b!")
+##
+##class child_c(child_b,child_a,):
+##	def __init__(self):
+##		super(child_c, self).__init__()
+##		print ("child_c!")
+##
+##x=child_c()
+##print (','.join([ str(x) for x in child_c.__mro__ ]))
+##print (','.join([ str(x) for x in child_c.__bases__]))
+
+
+
+
+
+
+
+### 10次射击总数为90环的可能性有多少种
+##PssblCnt=0
+##def computePssbl(shotCnt,scoreNow):
+##	global PssblCnt
+##	if shotCnt<=10:
+##		if scoreNow==90: # 达到 90环
+##			PssblCnt+=1
+##		elif scoreNow>90 or 10*(10-shotCnt)+scoreNow<90: # 大于90环或者不可能达到90环
+##			pass
+##		else:
+##			for i in range(11):
+##				computePssbl(shotCnt+1,scoreNow+i)
+##computePssbl(0,0)
+##print ('PssblCnt=%d'%(PssblCnt,))
+
+
+
+
+
+
+
+
+
+
+
+
+#### property另外的用法,使用property的类一定要继承自object，否则会有问题
+##class TestProperty(object):
+##	def __init__(self,width):
+##		self._width=width
+##
+##	@property
+##	def area(self):
+##		return self._width*self._width
+##
+##	@property
+##	def width(self):
+##		return self._width
+##
+##	@width.setter
+##	def width(self,value): self._width=value
+##
+##tp=TestProperty(7)
+##print ('%d'%tp.width)
+##print ('%d'%tp.area)
+##tp.width=8
+##print ('%d'%tp.width)
+##print ('%d'%tp.area)
+
+
+
+
+
+
+
+
+
+
+
+### 用3种方式实现可用于成员函数的decorator
+### 通过decorator实现在调用某成员函数前检查是否登录
+##import functools
+##
+### 1) 用descriptor
+##class checklogin(object):
+##	'''用 descriptor 实现'''
+##	def __init__(self,func):
+##		self._func=func
+##
+##	def __get__(self,instance,owner=None):
+##		if not instance.islogin():
+##			instance.login()
+##		return functools.partial(self._func,instance) # 因为self._func 是 unbound,需要将它 bound 到 instance 上
+##
+### 2) 用callable类实现
+##class checkloginwithextraarg(object):
+##	'''可以在定义时接受额外参数'''
+##	def __init__(self,*args,**kwargs):
+##		self._func=None
+##		self._args=args
+##		self._kwargs=kwargs
+##
+##	def __call__(self,func):
+##		self._func=func
+##		def wrapped(obj,*args,**kwargs):
+##			print('extra arg: %s,%s'%(self._args,self._kwargs))
+##			if not obj.islogin():
+##				obj.login()
+##			return self._func(obj,*args,**kwargs)
+##		return wrapped
+##
+##class X(object):
+##	def __init__(self,name):
+##		self._name=name
+##
+##	def islogin(self):
+##		print('in islogin')
+##		return False
+##
+##	def login(self):
+##		print('in login(), %s'%self._name)
+##
+##	@staticmethod
+##	def mycheck(func):
+##		def wrapped(self,*args,**kwargs):
+##			if not self.islogin():
+##				self.login()
+##			return func(self,*args,**kwargs)
+##		return wrapped
+##
+##	@checklogin
+##	def foo(self,x,y):
+##		print('in foo(), %s, x=%d,y=%d'%(self._name,x,y))
+##
+##	def bar(self,p,q=7):
+##		print('in bar(), %s, p=%d, q=%d'%(self._name,p,q))
+##
+##	@checkloginwithextraarg('thisi is extra arg')
+####	@checkloginwithextraarg()
+##	def goo(self,a,b):
+##		print('in goo(), %s, a=%d, b=%d'%(self._name,a,b))
+##
+##
+### 3) 用类函数实现
+##X.bar=X.mycheck(X.bar)
+##x=X('m')
+##x.foo(1,2)
+##print('-*'*20)
+##x.bar(3,4)
+##print('-*'*20)
+##x.goo(5,6)
+##
+##y=X('n')
+##print('-*'*20)
+##y.foo(2,3)
+##print('-*'*20)
+##y.bar(4,5)
+##print('-*'*20)
+##y.goo(6,7)
