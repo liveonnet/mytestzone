@@ -3294,11 +3294,11 @@
 
 
 
-### 用3种方式实现可用于成员函数的decorator
+### 用4种方式实现可用于成员函数的decorator
 ### 通过decorator实现在调用某成员函数前检查是否登录
-##import functools
 ##
 ### 1) 用descriptor
+##import functools
 ##class checklogin(object):
 ##	'''用 descriptor 实现'''
 ##	def __init__(self,func):
@@ -3325,6 +3325,14 @@
 ##				obj.login()
 ##			return self._func(obj,*args,**kwargs)
 ##		return wrapped
+##
+### 3) 用普通decorator实现
+##def checkloginmethod(func):
+##	def wrappedFunc(self,*args,**kwargs):
+##		if not self.islogin():
+##			self.login()
+##		return func(self,*args,**kwargs)
+##	return wrappedFunc
 ##
 ##class X(object):
 ##	def __init__(self,name):
@@ -3357,8 +3365,12 @@
 ##	def goo(self,a,b):
 ##		print('in goo(), %s, a=%d, b=%d'%(self._name,a,b))
 ##
+##	@checkloginmethod
+##	def too(self,c,d):
+##		print('in too(), %s, c=%d, d=%d'%(self._name,c,d))
 ##
-### 3) 用类函数实现
+##
+### 4) 用静态方法实现
 ##X.bar=X.mycheck(X.bar)
 ##x=X('m')
 ##x.foo(1,2)
@@ -3366,6 +3378,8 @@
 ##x.bar(3,4)
 ##print('-*'*20)
 ##x.goo(5,6)
+##print('-*'*20)
+##x.too(7,8)
 ##
 ##y=X('n')
 ##print('-*'*20)
@@ -3374,3 +3388,5 @@
 ##y.bar(4,5)
 ##print('-*'*20)
 ##y.goo(6,7)
+##print('-*'*20)
+##y.too(8,9)
