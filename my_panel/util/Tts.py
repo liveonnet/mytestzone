@@ -218,8 +218,10 @@ class TtsVoice(object):
 			else:
 				self.logger.debug('%s\n\n',text)
 				idx=self.__voice.Speak(text,flag)
+				sleep(0.5)
 ##				self.logger.debug('idx=%d RuningState=%d',idx,self.__voice.Status.RunningState)
-				while self.__voice.Status.RunningState in (SRSEWaiting4Speak, SRSEIsSpeaking): # 等待此次朗读完成
+##				while self.__voice.Status.RunningState in (SRSEWaiting4Speak, SRSEIsSpeaking): # 等待此次朗读完成
+				while self.__voice.Status.RunningState == SRSEIsSpeaking: # 等待此次朗读完成
 					if self.__stopFlag: # 需要退出线程
 						break
 

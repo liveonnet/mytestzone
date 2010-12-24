@@ -15,6 +15,7 @@ from _thread import start_new_thread
 from collections import deque
 import mmap
 import codecs
+import sys
 
 class WordFile(object):
 	def __init__(self,fname):
@@ -61,15 +62,15 @@ class SubtitleFile(object):
 		except UnicodeDecodeError:
 			self.wordlist=codecs.open(fname,encoding='utf8').readlines()
 
-		logging.debug('use %s to split...',repr(os.linesep*2))
+		self.logger.debug('use %s to split...',repr(os.linesep*2))
 		self._wordlist=re.split(os.linesep*2,''.join(self.wordlist))
 		if len(self._wordlist)<10:
-			logging.debug('use %s to split...',repr(os.linesep))
+			self.logger.debug('use %s to split...',repr(os.linesep))
 			self._wordlist=re.split(os.linesep,''.join(self.wordlist))
 
 		self.wordlist=self._wordlist
-		logging.debug('len(self.wordlist)=%d',len(self.wordlist))
-		logging.debug('self.wordlist[:3]=%s',self.wordlist[:3])
+		self.logger.debug('len(self.wordlist)=%d',len(self.wordlist))
+		self.logger.debug('self.wordlist[:3]=%s',self.wordlist[:3])
 		self.maxidx=len(self.wordlist)-1
 		self.curidx=0
 
@@ -115,7 +116,7 @@ class StartDictFile(object):
 		tmp=fname.rpartition('.')
 		self.__dictFileName=None
 		if fname.endswith(('.dz','.DZ','.dZ','.Dz')):
-			logging.debug('the file name is dz file!')
+			self.logger.debug('the file name is dz file!')
 			self.__dictFileName=fname.lower()
 			tmp=tmp.rpartition('.')
 		if tmp[0] is None and tmp[1] is None:
@@ -136,6 +137,9 @@ class StartDictFile(object):
 
 
 	def getIdxList(self):
+##		k=[x for x in self.__dictIndex.keys() if x=='test']
+##		self.logger.info('len(k)=%d',len(k))
+##		self.logger.info('id of \'test\' is %x',0 if 'test' not in self.__dictIndex else id(k[0]))
 		return sorted(self.__dictIndex.keys())
 
 
@@ -152,7 +156,7 @@ class StartDictFile(object):
 
 		if self.__dictInfo["version"]=="3.0.0" and self.__dictInfo.has_key("idxoffsetbits"):
 				self.__class__.__maxOffsetLen=int(self.__dictInfo["idxoffsetbits"])/8
-				logging.debug("word_data_offset is %d bytes !",self.__class__.__maxOffsetLen)
+				self.logger.debug("word_data_offset is %d bytes !",self.__class__.__maxOffsetLen)
 
 		self.logger.debug("self.__dictInfo=%s",self.__dictInfo);
 
@@ -176,6 +180,7 @@ class StartDictFile(object):
 			fmap.close()
 
 		self.logger.debug("len(self.__dictIndex)=%d",len(self.__dictIndex))
+		self.logger.debug("sizeof self.__dictIndex is %d",sys.getsizeof(self.__dictIndex))
 
 	def __readUntilZero(self,fileObj,maxRead=0,debug=False):
 		if maxRead:
@@ -210,13 +215,13 @@ class StartDictFile(object):
 	def __readNumber(self,fileObj,numberSize=4):
 		strRtn=fileObj.read(numberSize)
 		intRtn=struct.unpack("!I",strRtn)[0]
-#		logging.debug("strRtn=|%s| intRtn=%d",' '.join(["%02X"%(ord(c)) for c in strRtn]),intRtn)
+#		self.logger.debug("strRtn=|%s| intRtn=%d",' '.join(["%02X"%(ord(c)) for c in strRtn]),intRtn)
 		return intRtn
 
 	def __readNumbers(self,f,pos,numberSize=4):
 		strRtn=f[pos:pos+numberSize]
 		return pos+numberSize,struct.unpack("!II",strRtn)
-#		logging.debug("strRtn=|%s| intRtn=%d",' '.join(["%02X"%(ord(c)) for c in strRtn]),intRtn)
+#		self.logger.debug("strRtn=|%s| intRtn=%d",' '.join(["%02X"%(ord(c)) for c in strRtn]),intRtn)
 ##		return int1,int2
 
 	def getMeaning(self,strToSearch):
@@ -260,7 +265,7 @@ class StartDictFile(object):
 					tmpSize,tmpText=getattr(self,"_"+self.__class__.__name__+self.__class__.__functionMaping[by])(f,offset,size)
 					cnt+=tmpSize
 			else:
-#				logging.debug("sametypesequence=%s",sametype)
+#				self.logger.debug("sametypesequence=%s",sametype)
 				for datatype in sametype:
 					tmpSize=0
 					if datatype not in self.__class__.__functionMaping:
@@ -418,7 +423,7 @@ class StartDictFile(object):
 #				size=ord(idxFile[idx+5])<<24|ord(idxFile[idx+6])<<16|ord(idxFile[idx+7])<<8|ord(idxFile[idx+8])
 				size=struct.unpack_from(">i",idxFile,idx+5)[0]
 
-#				logging.debug("wordStr=%s,offset=%d,size=%d",wordStr,offset,size)
+#				self.logger.debug("wordStr=%s,offset=%d,size=%d",wordStr,offset,size)
 				idx+=9
 
 #				wordCnt+=1
@@ -555,9 +560,9 @@ class C4GRApi(object):
 
 		for i in range(3): # 尝试3次
 			if i!=0:
-				logging.info("第 %d 次尝试...",i+1)
+				self.logger.info("第 %d 次尝试...",i+1)
 			try:
-##				logging.debug("访问 %s",url)
+##				self.logger.debug("访问 %s",url)
 				r = self.opener.open(
 					req)#,
 ##					timeout=30)
@@ -568,13 +573,13 @@ class C4GRApi(object):
 					rurl=r.geturl()
 				break
 			except urllib.error.HTTPError as e:
-				logging.exception("请求出错！ %s",e)
+				self.logger.exception("请求出错！ %s",e)
 			except urllib.error.URLError as e:
-				logging.info("访问地址 %s 失败! %s",url,e)
+				self.logger.info("访问地址 %s 失败! %s",url,e)
 			except IOError as e:
-				logging.info("IO错误! %s",e)
+				self.logger.info("IO错误! %s",e)
 			except Exception as e:
-				logging.info("未知错误! %s",e)
+				self.logger.info("未知错误! %s",e)
 				raise
 
 		return (res,rurl)

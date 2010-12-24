@@ -36,7 +36,6 @@ class BasePanel(object):
 		self.section=section # 存取配置默认使用的section
 		self.root=root
 		self.logger=None # 日志对象
-		self.title=None # 日志中的模块名
 		self.menu=None # 本panel的菜单
 		self.cur_list_menu=None # 显示当前的 文件/源/字典 列表
 		self.recent_list_menu=None # 显示最近的 文件/源/字典 列表
@@ -95,8 +94,8 @@ class BasePanel(object):
 				xmvto=event.x_root-self.oldxy[0]-self.offsetx
 				ymvto=event.y_root-self.oldxy[1]-self.offsety
 ##				self.logger.debug('Motion at (%d,%d) +%d+%d'%(event.x,event.y,xmvto,ymvto))
-				self.root.geometry('%dx%d+%d+%d'%(self.curgeometry[0],self.curgeometry[1],
-					xmvto,ymvto))
+				self.c.position='+%d+%d'%(xmvto,ymvto)
+				self.root.geometry('%dx%d%s'%(self.curgeometry[0],self.curgeometry[1],self.c.position))
 		elif event.type=='7': # Enter
 			self.root.attributes("-alpha", 1) # use transparency level 0.1 to 1.0 (no transparency)
 			if self.stat==const.StatPlaying:
@@ -135,8 +134,9 @@ class BasePanel(object):
 	def loadCfg(self,cfg,section=None):
 		if not section:
 			section=self.section
-		self.c.title=cfg.get(section,'title','unknown')
+		self.c.title=cfg.get(section,'title','unknown') # 日志中的模块名
 		self.c.enabled=cfg.getboolean(section,'enabled')
+		self.c.position=cfg.get(section,'position')
 		self.c.file=json.JSONDecoder().decode(cfg.get(section,'file'))
 		self.c.alpha=cfg.getfloat(section,'alpha')
 		self.c.fg=cfg.get(section,'fg')
@@ -149,7 +149,6 @@ class BasePanel(object):
 	def applyCfg(self):
 		self.logger=logging.getLogger(self.c.title)
 		self.root.attributes("-alpha", self.c.alpha) # use transparency level 0.1 to 1.0 (no transparency)
-		self.title=self.c.title
 
 		# TTS
 		if self.c.tts_read:
@@ -160,6 +159,7 @@ class BasePanel(object):
 			section=self.section
 		cfg.set(section,'title',self.c.title)
 		cfg.set(section,'enabled',str(self.c.enabled))
+		cfg.set(section,'position',self.c.position)
 		cfg.set(section,'file',json.JSONEncoder(ensure_ascii =False,separators=(',', ':')).encode(self.c.file).replace(',[',',\n['))
 		cfg.set(section,'alpha',str(self.c.alpha))
 		cfg.set(section,'fg',str(self.c.fg))
@@ -199,6 +199,13 @@ class BasePanel(object):
 			self.tts.stop()
 		pass
 
+	@property
+	def title(self):
+		return self.c.title
+	@property
+	def sectionname(self):
+		return self.section
+
 class RecitePanel(BasePanel):
 	def __init__(self,name,section,root):
 		BasePanel.__init__(self,name,section,root)
@@ -228,7 +235,7 @@ class RecitePanel(BasePanel):
 		BasePanel.show(self)
 		self.curgeometry=[self.label.winfo_reqwidth(),self.label.winfo_reqheight()]
 		self.label.pack(expand=True,fill=tkinter.BOTH)
-		self.root.geometry('%dx%d'%(self.curgeometry[0],self.curgeometry[1]))
+		self.root.geometry('%dx%d%s'%(self.curgeometry[0],self.curgeometry[1],self.c.position))
 
 	def hide(self):
 		BasePanel.hide(self)
@@ -327,8 +334,7 @@ class RecitePanel(BasePanel):
 	def createMenu(self,mainmenu):
 		BasePanel.createMenu(self,mainmenu)
 		if not self.c.enabled:
-			if self.cur_list_menu:
-				mainmenu.index(END)
+			return
 
 		self.cur_list_menu=tkinter.Menu(self.menu,tearoff=False)
 		for idx,i in enumerate(self.c.file):
@@ -477,7 +483,7 @@ class SubtitlePanel(BasePanel):
 		BasePanel.show(self)
 		self.curgeometry=[self.text.winfo_reqwidth(),self.text.winfo_reqheight()]
 		self.text.pack(expand=True,fill=tkinter.BOTH)
-		self.root.geometry('%dx%d'%(self.curgeometry[0],self.curgeometry[1]))
+		self.root.geometry('%dx%d%s'%(self.curgeometry[0],self.curgeometry[1],self.c.position))
 
 	def hide(self):
 		BasePanel.hide(self)
@@ -602,8 +608,7 @@ class SubtitlePanel(BasePanel):
 	def createMenu(self,mainmenu):
 		BasePanel.createMenu(self,mainmenu)
 		if not self.c.enabled:
-			if self.cur_list_menu:
-				mainmenu.index(END)
+			return
 
 		self.cur_list_menu=tkinter.Menu(self.menu,tearoff=False)
 		for idx,i in enumerate(self.c.file):
@@ -814,8 +819,7 @@ class ReaderPanel(BasePanel):
 	def createMenu(self,mainmenu):
 		BasePanel.createMenu(self,mainmenu)
 		if not self.c.enabled:
-			if self.cur_list_menu:
-				mainmenu.index(END)
+			return
 
 		self.cur_list_menu=tkinter.Menu(self.menu,tearoff=False)
 		for idx,i in enumerate(self.c.file):
@@ -839,7 +843,7 @@ class ReaderPanel(BasePanel):
 		BasePanel.show(self)
 		self.curgeometry=[self.text.winfo_reqwidth(),self.text.winfo_reqheight()]
 		self.text.pack(expand=True,fill=tkinter.BOTH)
-		self.root.geometry('%dx%d'%(self.curgeometry[0],self.curgeometry[1]))
+		self.root.geometry('%dx%d%s'%(self.curgeometry[0],self.curgeometry[1],self.c.position))
 
 	def hide(self):
 		BasePanel.hide(self)
@@ -1148,8 +1152,7 @@ class DictionaryPanel(BasePanel):
 	def createMenu(self,mainmenu):
 		BasePanel.createMenu(self,mainmenu)
 		if not self.c.enabled:
-			if self.cur_list_menu:
-				mainmenu.index(END)
+			return
 
 		self.cur_list_menu=tkinter.Menu(self.menu,tearoff=False)
 		for idx,i in enumerate(self.c.file):
@@ -1190,7 +1193,7 @@ class DictionaryPanel(BasePanel):
 ##		self.logger.info('root=%dx%d',self.root.winfo_reqwidth(),self.root.winfo_reqheight())
 
 		self.container.pack(expand=True,fill=tkinter.BOTH)
-		self.root.geometry('%dx%d'%(self.curgeometry[0],self.curgeometry[1]))
+		self.root.geometry('%dx%d%s'%(self.curgeometry[0],self.curgeometry[1],self.c.position))
 ##		self.container.geometry('%dx%d'%(640,480))
 
 	def hide(self):

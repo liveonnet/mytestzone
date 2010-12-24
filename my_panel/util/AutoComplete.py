@@ -33,6 +33,7 @@ class AutoComplete(object):
 			suggestlist=[x for x in open(r'd:\word.txt').readlines() if x.rstrip()!=0]
 		self.suggestlist=suggestlist
 
+
 		if not self.suggestlist:
 			self.logger.info('没有用于自动完成的数据!')
 		else:
@@ -91,6 +92,12 @@ class AutoComplete(object):
 			tmp=self.record.replace('*','\\*')
 		else:
 			tmp=self.record[:]
+
+		# 过滤re中的保留字
+		re_chars=['(',')','[',']','{','}']
+		for c in re_chars:
+			if c in tmp:
+				tmp=tmp.replace(c,'\\%s'%c)
 ##		p=re.compile("^%s[a-zA-Z0-9|\-|\.| ]*"%(self.record,),re.I)
 		p=re.compile("^%s[a-zA-Z0-9|\-|\.| ]*"%(tmp,),re.I)
 		for i,w in enumerate(self.suggestlist[self.blkidx:self.blkendidx]):
@@ -109,6 +116,13 @@ class AutoComplete(object):
 			record=self.record[:]
 			if '*' in record: # 替换星号
 				record=record.replace('*','\\*')
+
+			# 过滤re中的保留字
+			re_chars=['(',')','[',']','{','}']
+			for c in re_chars:
+				if c in record:
+					record=record.replace(c,'\\%s'%c)
+
 			while len(record)>2:
 				record=record[:-1]
 				p=re.compile("^%s[a-zA-Z0-9|\-|\.| ]*"%(record,))
@@ -265,6 +279,26 @@ class AutoComplete(object):
 		if self.active:
 			self.DestroyGUI()
 		self.suggestlist=suggest_content
+##		self.logger.info('id of \'test\' is %x',0 if 'test' not in self.suggestlist else id(self.suggestlist[self.suggestlist.index('test')]))
+		self.logger.debug('sizeof suggestlist is %d',sys.getsizeof(self.suggestlist))
+
+		# 打印内存占用情况
+		import gc
+		from io import StringIO
+		from pprint import pprint
+		from collections import defaultdict
+		d = defaultdict(int)
+		objects = gc.get_objects()
+		self.logger.debug('gc objects size: %d', len(objects))
+		for o in objects:
+			d[str(type(o))] += sys.getsizeof(o)
+		d=[(k,v) for k,v in d.items()]
+		d.sort(key=lambda x:x[1],reverse=True)
+		t=StringIO()
+		pprint(d,t)
+		self.logger.debug('memory usage:\n%s',t.getvalue())
+		t.close()
+
 		self.prepareData()
 
 # Test

@@ -24,6 +24,7 @@ import logging
 import logging.config
 import json
 import re
+from collections import OrderedDict
 
 # TODO: 各panel建立自己的菜单,
 # 支持Drag & Drop: http://sourceforge.net/projects/tkdnd/
@@ -45,7 +46,7 @@ class MyPanelApp(object):
 											'SubtitlePanel':SubtitlePanel,
 											'ReaderPanel':ReaderPanel,
 											'DictionaryPanel':DictionaryPanel}
-		self.panellist=[]
+		self.panellist=OrderedDict()
 
 		# 读取配置信息
 		self.inifile_encoding=inifile_encoding
@@ -60,7 +61,7 @@ class MyPanelApp(object):
 		self.loadCfg()
 
 		self.curpanel=self.panellist[self.c.cur_panel] # 当前使用 panel
-		for i in self.panellist:
+		for i in self.panellist.values():
 			if i!=self.curpanel:
 				i.hide()
 
@@ -74,14 +75,14 @@ class MyPanelApp(object):
 		# 设置右键菜单
 		self.menubar=tkinter.Menu(self.root,tearoff=False)
 
-		for p in self.panellist:
+		for p in self.panellist.values():
 			p.createMenu(self.menubar)
 		self.menubar.add_separator()
 
-		self.vMode=tkinter.IntVar()
-		for i,p in enumerate(self.panellist):
-			self.menubar.add_radiobutton(label=p.title,command=self.switchMode,value=i,variable=self.vMode)
-			if p==self.curpanel:
+		self.vMode=tkinter.StringVar()
+		for k,v in self.panellist.items():
+			self.menubar.add_radiobutton(label=v.title,command=self.switchMode,value=v.sectionname,variable=self.vMode)
+			if v==self.curpanel:
 				self.menubar.invoke(tkinter.END) # set cur panel as checked
 		self.menubar.add_separator()
 
@@ -89,7 +90,7 @@ class MyPanelApp(object):
 
 
 	def switchMode(self):
-		self.logger.info("self.vMode=%d",self.vMode.get())
+		self.logger.info("self.vMode=%s",self.vMode.get())
 		if self.curpanel and self.curpanel!=self.panellist[self.vMode.get()]:
 			self.curpanel.pausePanel(const.StatDisabled)
 			self.curpanel.unbindLeftMouse()
@@ -126,14 +127,16 @@ class MyPanelApp(object):
 
 		# 读取程序配置
 		self.c.total_panel=self.cfg.getint('account','total_panel')
-		self.c.cur_panel=self.cfg.getint('account','cur_panel')
+		self.c.cur_panel=self.cfg.get('account','cur_panel')
 		for i in range(1,self.c.total_panel+1):
 			s='panel-%d'%(i,)
+			if not self.cfg.getboolean(s,'enabled'): # 略过enabled==False的panel
+				continue
 			p=self.cfg.get(s,'type')
 			p=self.panelFactory[p]('%s-%s'%(s,p),s,self.root) # 建立相应panel对象
 			p.loadCfg(self.cfg,s) # 由相应panel对象读取属于自己的配置
 			p.applyCfg()
-			self.panellist.append(p)
+			self.panellist[p.sectionname]=p
 
 
 	def onQuit(self):
@@ -141,11 +144,11 @@ class MyPanelApp(object):
 		if self.curpanel:
 			self.curpanel.pausePanel(const.StatStopped)
 		self.cfg.set('account','total_panel',str(self.c.total_panel))
-		self.cfg.set('account','cur_panel',str(self.c.cur_panel))
-		for p in self.panellist:
+		self.cfg.set('account','cur_panel',self.c.cur_panel)
+		for p in self.panellist.values():
 			p.saveCfg(self.cfg)
 
-		for p in self.panellist:
+		for p in self.panellist.values():
 			p.setExit()
 
 		self.cfg.write(codecs.open(self.inifile,'w',self.inifile_encoding))
