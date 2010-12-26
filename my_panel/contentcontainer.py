@@ -118,7 +118,7 @@ class StartDictFile(object):
 		if fname.endswith(('.dz','.DZ','.dZ','.Dz')):
 			self.logger.debug('the file name is dz file!')
 			self.__dictFileName=fname.lower()
-			tmp=tmp.rpartition('.')
+			tmp=tmp[0].rpartition('.')
 		if tmp[0] is None and tmp[1] is None:
 			self.logger.debug("no dot found in filename %s",fname)
 			self.__baseFileName=tmp[2]
@@ -245,6 +245,7 @@ class StartDictFile(object):
 
 		rslt=''
 
+		# FIXME: 如果stardict在运行，它会以独占模式打开这些字典文件，导致本程序打开这些文件失败，目前尚未处理此问题。
 		if self.__dictFileName.endswith('.dz'):
 			f= gzip.GzipFile(self.__dictFileName,'rb')
 		else:

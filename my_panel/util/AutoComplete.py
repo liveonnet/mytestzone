@@ -19,9 +19,9 @@ class AutoComplete(object):
 		self.logger=logging.getLogger(self.__class__.__name__)
 		self.win = win
 		self.active = False
-		self.record = '' # 当前字符串
-		self.curQuickIdx='' # 当前使用的索引
-		self.recent_fail='' # 保存最近的查不到任何匹配的字符串，用于优化
+		self.record = None # 当前字符串
+		self.curQuickIdx=None # 当前使用的索引
+		self.recent_fail=None # 保存最近的查不到任何匹配的字符串，用于优化
 		self.blkidx,self.blkendidx=0,0 # 当前listbox显示的是self.suggestlist的部分内容：self.suggestlist[self.blkidx:self.blkendidx]
 		self.curidx=0 # 在suggestlist中最接近当前字符串的item索引
 		self.listbox=None
@@ -34,6 +34,7 @@ class AutoComplete(object):
 		self.suggestlist=suggestlist
 
 
+		self.quickIdx=None # 记录各字母开头的词汇的起始结束索引
 		if not self.suggestlist:
 			self.logger.info('没有用于自动完成的数据!')
 		else:
@@ -60,6 +61,9 @@ class AutoComplete(object):
 	def FilterInput(self):
 		if not self.suggestlist:
 			return
+		if not self.record:
+			return
+
 		# 初步优化
 		if (len(self.record)>=2 and self.record[0:2]!=self.curQuickIdx):
 			try:
@@ -98,8 +102,8 @@ class AutoComplete(object):
 		for c in re_chars:
 			if c in tmp:
 				tmp=tmp.replace(c,'\\%s'%c)
-##		p=re.compile("^%s[a-zA-Z0-9|\-|\.| ]*"%(self.record,),re.I)
-		p=re.compile("^%s[a-zA-Z0-9|\-|\.| ]*"%(tmp,),re.I)
+##		p=re.compile('^%s[a-zA-Z0-9|\-|\.| ]*'%(self.record,),re.I)
+		p=re.compile('^%s[a-zA-Z0-9|\-|\.| ]*'%(tmp,),re.I)
 		for i,w in enumerate(self.suggestlist[self.blkidx:self.blkendidx]):
 			if re.match(p,w):
 				if self.listbox.curselection():
@@ -125,7 +129,7 @@ class AutoComplete(object):
 
 			while len(record)>2:
 				record=record[:-1]
-				p=re.compile("^%s[a-zA-Z0-9|\-|\.| ]*"%(record,))
+				p=re.compile('^%s[a-zA-Z0-9|\-|\.| ]*'%(record,))
 				for i,w in enumerate(self.suggestlist[self.blkidx:self.blkendidx]):
 					if re.match(p,w):
 						if self.listbox.curselection():
@@ -152,12 +156,12 @@ class AutoComplete(object):
 			modified=True
 			self.logger.debug('modified! key=|%s| keysym=%s, len(self.record)=%d,|%s|',key,event.keysym,len(self.record),self.record)
 
-		if re.match("[a-zA-Z0-9|\-|\.| ]", key):
+		if re.match('[a-zA-Z0-9|\-|\.| ]', key):
 			if not self.active and len(self.record)>1:
 				self.MakeGUI()
 			elif self.active and modified:
 				self.FilterInput()
-		elif event.keysym in ("BackSpace","Delete"):
+		elif event.keysym in ('BackSpace','Delete'):
 			if self.active:
 				if len(self.record)>1:
 					self.FilterInput()
@@ -165,7 +169,7 @@ class AutoComplete(object):
 				self.MakeGUI()
 			else:
 				self.DestroyGUI()
-		elif event.keysym == "Return":
+		elif event.keysym == 'Return':
 			if self.active:
 				if self.listbox.curselection():
 					self.win.delete(0,tkinter.END)
@@ -173,9 +177,9 @@ class AutoComplete(object):
 				self.DestroyGUI()
 				self.logger.debug('pressed return!')
 				self.cbFunc()
-		elif event.keysym in ("Up","Down","Next","Prior","Shift_R", "Shift_L",
-##			"Control_L", "Control_R", "Alt_L","Alt_R",
-			"parenleft", "parenright"):
+		elif event.keysym in ('Up','Down','Next','Prior','Shift_R', 'Shift_L',
+##			'Control_L', 'Control_R', 'Alt_L','Alt_R',
+			'parenleft', 'parenright'):
 			pass
 		else:
 			self.logger.debug('else~')
@@ -189,26 +193,26 @@ class AutoComplete(object):
 	def onKeyPress(self,event):
 		if not self.suggestlist or not self.active:
 			return
-		if event.keysym =="Down":
+		if event.keysym =='Down':
 			if self.listbox.curselection():
 				idx=int(self.listbox.curselection()[0])
 				newidx=(idx+self.listbox.size()+1)%self.listbox.size()
 				self.listbox.selection_clear(idx)
 				self.listbox.see(newidx)
 				self.listbox.selection_set (newidx)
-		elif event.keysym=="Up":
+		elif event.keysym=='Up':
 			idx=int(self.listbox.curselection()[0])
 			newidx=(idx+self.listbox.size()-1)%self.listbox.size()
 			self.listbox.selection_clear(idx)
 			self.listbox.see(newidx)
 			self.listbox.selection_set (newidx)
-		elif event.keysym=="Next":
+		elif event.keysym=='Next':
 			self.logger.debug('nearest %d',self.listbox.nearest(self.listbox.winfo_height()))
 			if self.listbox.nearest(self.listbox.winfo_height())<self.blkendidx-self.blkidx-1:
 				self.listbox.yview_scroll(1,tkinter.PAGES)
 			else:
 				self.listbox.see(0)
-		elif event.keysym=="Prior":
+		elif event.keysym=='Prior':
 			self.logger.debug('nearest %d',self.listbox.nearest(0))
 			if self.listbox.nearest(0)!=0:
 				self.logger.debug('继续上翻')
@@ -282,28 +286,39 @@ class AutoComplete(object):
 ##		self.logger.info('id of \'test\' is %x',0 if 'test' not in self.suggestlist else id(self.suggestlist[self.suggestlist.index('test')]))
 		self.logger.debug('sizeof suggestlist is %d',sys.getsizeof(self.suggestlist))
 
-		# 打印内存占用情况
-		import gc
-		from io import StringIO
-		from pprint import pprint
-		from collections import defaultdict
-		d = defaultdict(int)
-		objects = gc.get_objects()
-		self.logger.debug('gc objects size: %d', len(objects))
-		for o in objects:
-			d[str(type(o))] += sys.getsizeof(o)
-		d=[(k,v) for k,v in d.items()]
-		d.sort(key=lambda x:x[1],reverse=True)
-		t=StringIO()
-		pprint(d,t)
-		self.logger.debug('memory usage:\n%s',t.getvalue())
-		t.close()
+##		# 打印内存占用情况
+##		import gc
+##		from io import StringIO
+##		from pprint import pprint
+##		from collections import defaultdict
+##		d = defaultdict(int)
+##		objects = gc.get_objects()
+##		self.logger.debug('gc objects size: %d', len(objects))
+##		for o in objects:
+##			d[str(type(o))] += sys.getsizeof(o)
+##		d=[(k,v) for k,v in d.items()]
+##		d.sort(key=lambda x:x[1],reverse=True)
+##		t=StringIO()
+##		pprint(d,t)
+##		self.logger.debug('memory usage:\n%s',t.getvalue())
+##		t.close()
 
+		# 先reset自动完成状态数据
+		self.recent_fail=''
+		if self.listbox: self.listbox.delete(0,tkinter.END) # 先清空
+		self.curQuickIdx=None
+		self.curidx=0
+		self.blkidx,self.blkendidx=0,0
 		self.prepareData()
+		# 将新数据应用于自动完成
+		e=lambda x:None
+		e.keysym=''
+		e.char='x'
+		self.onKeyRelease(e)
 
 # Test
-if __name__ == "__main__":
-	t = tkinter.Entry(font=("courier", 10))
+if __name__ == '__main__':
+	t = tkinter.Entry(font=('courier', 10))
 	t.pack()
 ##    t.insert("end", "import Tkinter\nt = Tkinter")
 	a = AutoComplete(t)

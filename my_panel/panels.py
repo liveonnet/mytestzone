@@ -399,7 +399,7 @@ class RecitePanel(BasePanel):
 			for i,onefile in enumerate(flist):
 				self.logger.debug('multi file %02d/%d: %s',i,len(flist),onefile)
 
-			addorreplace=tkMessageBox.askyesnocancel('Add or replace','add the file(s) to your file list? (press "no" or replace current file list)',default=tkMessageBox.YES)
+			addorreplace=tkMessageBox.askyesnocancel('Add or replace','add the file(s) to your file list? (press "no" will replace current file list)',default=tkMessageBox.YES)
 			self.logger.debug('addorreplace=%s',addorreplace)
 			self.c.recent_dir=os.path.split(flist[0])[0]
 			if addorreplace==None:
@@ -673,7 +673,7 @@ class SubtitlePanel(BasePanel):
 			for i,onefile in enumerate(flist):
 				self.logger.debug('multi file %02d/%d: %s',i,len(flist),onefile)
 
-			addorreplace=tkMessageBox.askyesnocancel('Add or replace','add the file(s) to your file list? (press "no" or replace current file list)',default=tkMessageBox.YES)
+			addorreplace=tkMessageBox.askyesnocancel('Add or replace','add the file(s) to your file list? (press "no" will replace current file list)',default=tkMessageBox.YES)
 			self.logger.debug('addorreplace=%s',addorreplace)
 			self.c.recent_dir=os.path.split(flist[0])[0]
 			if addorreplace==None:
@@ -1244,7 +1244,7 @@ class DictionaryPanel(BasePanel):
 			for i,onefile in enumerate(flist):
 				self.logger.debug('multi file %02d/%d: %s',i,len(flist),onefile)
 
-			addorreplace=tkMessageBox.askyesnocancel('Add or replace','add the file(s) to your file list? (press "no" or replace current file list)',default=tkMessageBox.YES)
+			addorreplace=tkMessageBox.askyesnocancel('Add or replace','add the file(s) to your file list? (press "no" will replace current file list)',default=tkMessageBox.YES)
 			self.logger.debug('addorreplace=%s',addorreplace)
 			self.c.recent_dir=os.path.split(flist[0])[0]
 			if addorreplace==None:
