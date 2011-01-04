@@ -25,7 +25,7 @@ class AutoComplete(object):
 		self.blkidx,self.blkendidx=0,0 # 当前listbox显示的是self.suggestlist的部分内容：self.suggestlist[self.blkidx:self.blkendidx]
 		self.curidx=0 # 在suggestlist中最接近当前字符串的item索引
 		self.listbox=None
-		self.listcontent=tkinter.StringVar()
+##		self.listcontent=tkinter.StringVar()
 		self.win.bind("<1>", self.onClick,'+')
 		self.win.bind("<KeyRelease>", self.onKeyRelease)
 
@@ -183,12 +183,14 @@ class AutoComplete(object):
 			pass
 		else:
 			self.logger.debug('else~')
-			if self.active:
-				self.DestroyGUI()
-			else:
-				if modified and len(self.record)>1:
-##					self.DestroyGUI()
-					self.MakeGUI()
+			if modified and len(self.record)>1:
+				self.MakeGUI()
+##			if self.active:
+##				self.DestroyGUI()
+##			else:
+##				if modified and len(self.record)>1:
+####					self.DestroyGUI()
+##					self.MakeGUI()
 
 	def onKeyPress(self,event):
 		if not self.suggestlist or not self.active:
@@ -251,7 +253,8 @@ class AutoComplete(object):
 			sb.pack(side=tkinter.RIGHT, fill=tkinter.BOTH)
 			ft = tkFont.Font(family = 'Fixdsys',size = 12)
 			self.listbox = tkinter.Listbox(form, font=ft,highlightthickness=0,relief=tkinter.FLAT,
-				yscrollcommand=sb.set, height=10,listvariable=self.listcontent)
+##				yscrollcommand=sb.set, height=10,listvariable=self.listcontent)
+				yscrollcommand=sb.set, height=10)
 			self.listbox.selection_set(0)
 			self.listbox.pack(side=tkinter.LEFT, fill=tkinter.BOTH)
 			sb.config(command=self.listbox.yview)

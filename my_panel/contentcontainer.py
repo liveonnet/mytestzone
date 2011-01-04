@@ -133,14 +133,12 @@ class StartDictFile(object):
 				self.__dictFileName=self.__baseFileName+'.dict'
 
 		self.__dictInfo={}
-		self.__dictIndex={}
+		self.__posList=[]
+		self.__wordList=[]
 
 
 	def getIdxList(self):
-##		k=[x for x in self.__dictIndex.keys() if x=='test']
-##		self.logger.info('len(k)=%d',len(k))
-##		self.logger.info('id of \'test\' is %x',0 if 'test' not in self.__dictIndex else id(k[0]))
-		return sorted(self.__dictIndex.keys())
+		return self.__wordList
 
 
 	def readIFO(self):
@@ -162,25 +160,25 @@ class StartDictFile(object):
 
 
 	def readIDX(self):
+		w,p=[],[]
 		with open(self.__idxFileName,'rb') as f:
 			fmap=mmap.mmap(f.fileno(),0,access=mmap.ACCESS_READ)
 			cur=0
-##			wordStr=""
-##			wordDataOffset,wordDataSize=0,0
 			while True:
 				cur,wordStr=self.__readUntilZeroEx(fmap,cur)
 				if not wordStr:
 ##					self.logger.debug("wordStr=\"\",break!")
+					p.append(pos[0]+pos[1])
 					fmap.close()
 					break
-##				cur,self.__dictIndex[wordStr]=cur+8,\
-##					(fmap[cur]<<24|fmap[cur+1]<<16|fmap[cur+2]<<8|fmap[cur+3],\
-##					fmap[cur+4]<<24|fmap[cur+5]<<16|fmap[cur+6]<<8|fmap[cur+7])
-				cur,self.__dictIndex[wordStr]=self.__readNumbers(fmap,cur,self.__class__.__maxOffsetLen*2)
+				w.append(wordStr)
+				cur,pos=self.__readNumbers(fmap,cur,self.__class__.__maxOffsetLen*2)
+				p.append(pos[0])
 			fmap.close()
 
-		self.logger.debug("len(self.__dictIndex)=%d",len(self.__dictIndex))
-		self.logger.debug("sizeof self.__dictIndex is %d",sys.getsizeof(self.__dictIndex))
+		self.logger.debug("len(w)=%d len(p)=%d, %d",len(w),len(p),p[-1])
+		self.logger.debug("sizeof w is %d, sizeof p is %d",sys.getsizeof(w),sys.getsizeof(p))
+		self.__wordList,self.__posList=w,p
 
 	def __readUntilZero(self,fileObj,maxRead=0,debug=False):
 		if maxRead:
@@ -225,7 +223,7 @@ class StartDictFile(object):
 ##		return int1,int2
 
 	def getMeaning(self,strToSearch):
-		if not self.__dictIndex:
+		if (not self.__wordList) or (not self.__posList):
 			self.logger.debug("index file not load!")
 			return None
 
@@ -237,10 +235,15 @@ class StartDictFile(object):
 
 		sametype=self.__dictInfo.get("sametypesequence")
 
-		offset,size=self.__dictIndex.get(strToSearch,(None,None))
-		if (not offset) or (not size):
-			self.logger.debug("key not found!")
+
+		offset,size=None,None
+		try:
+			idx=self.__wordList.index(strToSearch)
+			offset,size=self.__posList[idx],self.__posList[idx+1]-self.__posList[idx]
+		except ValueError:
+			self.logger.debug("key |%s| not found!",strToSearch)
 			return None
+
 		self.logger.debug("offset=%d,size=%d",offset,size)
 
 		rslt=''
@@ -388,9 +391,6 @@ class StartDictFile(object):
 		self.readIFO()
 		self.readIDX()
 
-		if self.__dictIndex:
-			for key in self.__dictIndex.iterkeys():
-				self.getMeaning(key)
 
 	def Dict2Txt(self,ofilename):
 		self.readIFO()

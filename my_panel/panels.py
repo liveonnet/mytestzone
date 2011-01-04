@@ -1296,9 +1296,11 @@ class DictionaryPanel(BasePanel):
 		self.ac.setSuggestContent(self.cur_dict.getIdxList())
 
 	def onCmdSearch(self,event=None):
-		text=self.entryInput.get().lower().strip()
+		text=self.entryInput.get().strip()
 		self.logger.debug('查询 %s ...',text)
-		r=self.cur_dict.getMeaning(text)
+		r=self.cur_dict.getMeaning(text.lower())
+		if not r: r=self.cur_dict.getMeaning(text)
+
 		if r:
 			# TTS
 			if self.c.tts_read and self.tts:
