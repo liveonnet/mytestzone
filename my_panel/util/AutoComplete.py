@@ -174,9 +174,13 @@ class AutoComplete(object):
 				if self.listbox.curselection():
 					self.win.delete(0,tkinter.END)
 					self.win.insert(tkinter.INSERT, self.listbox.get(self.listbox.curselection()[0]))
+				self.win.select_range(0, tkinter.END) # 选择
 				self.DestroyGUI()
 				self.logger.debug('pressed return!')
 				self.cbFunc()
+		elif event.keysym == 'Escape': # 按 ESC 则隐藏listbox
+			if self.active:
+				self.DestroyGUI()
 		elif event.keysym in ('Up','Down','Next','Prior','Shift_R', 'Shift_L',
 ##			'Control_L', 'Control_R', 'Alt_L','Alt_R',
 			'parenleft', 'parenright'):
@@ -193,8 +197,16 @@ class AutoComplete(object):
 ##					self.MakeGUI()
 
 	def onKeyPress(self,event):
-		if not self.suggestlist or not self.active:
+		if not self.suggestlist:
 			return
+		# 如果当前没有显示listbox但是输入的字符串曾经(部分)匹配过则再次显示listbox。这是为了增加易用性，避免误按esc后如果不输入字符串则不
+		#  显示listbox的问题
+		if (not self.active):
+			if self.listbox.curselection():
+				self.MakeGUI()
+			else:
+				return
+
 		if event.keysym =='Down':
 			if self.listbox.curselection():
 				idx=int(self.listbox.curselection()[0])
@@ -203,11 +215,12 @@ class AutoComplete(object):
 				self.listbox.see(newidx)
 				self.listbox.selection_set (newidx)
 		elif event.keysym=='Up':
-			idx=int(self.listbox.curselection()[0])
-			newidx=(idx+self.listbox.size()-1)%self.listbox.size()
-			self.listbox.selection_clear(idx)
-			self.listbox.see(newidx)
-			self.listbox.selection_set (newidx)
+			if self.listbox.curselection():
+				idx=int(self.listbox.curselection()[0])
+				newidx=(idx+self.listbox.size()-1)%self.listbox.size()
+				self.listbox.selection_clear(idx)
+				self.listbox.see(newidx)
+				self.listbox.selection_set (newidx)
 		elif event.keysym=='Next':
 			self.logger.debug('nearest %d',self.listbox.nearest(self.listbox.winfo_height()))
 			if self.listbox.nearest(self.listbox.winfo_height())<self.blkendidx-self.blkidx-1:

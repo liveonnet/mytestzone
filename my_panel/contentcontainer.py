@@ -16,6 +16,7 @@ from collections import deque
 import mmap
 import codecs
 import sys
+from gzip import GzipFile
 
 class WordFile(object):
 	def __init__(self,fname):
@@ -111,26 +112,29 @@ class StartDictFile(object):
 		'X':'__readDict_X','n':'__readDIct_n'}
 
 	def __init__(self,fname):
+		'''由fname确定基准文件名，然后构造ifo idx dict文件名，后两者优先使用未压缩的文件'''
 		self.logger=logging.getLogger(self.__class__.__name__)
+
 		self.__baseFileName=''
 		tmp=fname.rpartition('.')
-		self.__dictFileName=None
-		if fname.endswith(('.dz','.DZ','.dZ','.Dz')):
-			self.logger.debug('the file name is dz file!')
-			self.__dictFileName=fname.lower()
+		if fname.lower().endswith(('.dz','.gz')):
+			self.logger.debug('the file name is dz/gz file!')
 			tmp=tmp[0].rpartition('.')
+
 		if tmp[0] is None and tmp[1] is None:
 			self.logger.debug("no dot found in filename %s",fname)
 			self.__baseFileName=tmp[2]
 		else:
 			self.__baseFileName=tmp[0]
-		self.__idxFileName=self.__baseFileName+'.idx'
+
 		self.__ifoFileName=self.__baseFileName+'.ifo'
-		if not self.__dictFileName:
-			if not os.path.exists(self.__baseFileName+'.dict'):
-				self.__dictFileName=self.__baseFileName+'.dict.dz'
-			else:
-				self.__dictFileName=self.__baseFileName+'.dict'
+
+		self.__idxFileName=self.__baseFileName+'.idx'
+		if not os.path.exists(self.__idxFileName):
+			self.__idxFileName=self.__baseFileName+'.idx.gz'
+		self.__dictFileName=self.__baseFileName+'.dict'
+		if not os.path.exists(self.__dictFileName):
+			self.__dictFileName=self.__baseFileName+'.dict.dz'
 
 		self.__dictInfo={}
 		self.__posList=[]
@@ -160,25 +164,48 @@ class StartDictFile(object):
 
 
 	def readIDX(self):
+		self.logger.debug('loading idx file ...')
+		leng=self.__class__.__maxOffsetLen*2
 		w,p=[],[]
-		with open(self.__idxFileName,'rb') as f:
+		f=None
+		cur=0
+
+		if self.__idxFileName.lower().endswith('.gz'):
+			self.logger.debug('idx file is gzip format!')
+			fmap=GzipFile(self.__idxFileName,'rb').read()
+		else:
+			f=open(self.__idxFileName,'rb')
 			fmap=mmap.mmap(f.fileno(),0,access=mmap.ACCESS_READ)
-			cur=0
+
+		try:
 			while True:
-				cur,wordStr=self.__readUntilZeroEx(fmap,cur)
+				# 避免调用 self.__readUntilZeroEx
+				idx=fmap.find(b'\0',cur)
+				if idx!=-1:
+					cur,wordStr=idx+1,fmap[cur:idx].decode('utf-8')
+				else:
+					wordStr=''
+
 				if not wordStr:
-##					self.logger.debug("wordStr=\"\",break!")
 					p.append(pos[0]+pos[1])
-					fmap.close()
 					break
+
 				w.append(wordStr)
-				cur,pos=self.__readNumbers(fmap,cur,self.__class__.__maxOffsetLen*2)
+				cur,pos=cur+leng,struct.unpack("!II",fmap[cur:cur+leng]) # 避免调用 self.__readNumbers
 				p.append(pos[0])
-			fmap.close()
+		finally:
+			if hasattr(fmap,'close'):
+				fmap.close()
+			else: # 是大的bytes
+				del fmap
+			if hasattr(f,'close'):
+				f.close()
+
 
 		self.logger.debug("len(w)=%d len(p)=%d, %d",len(w),len(p),p[-1])
 		self.logger.debug("sizeof w is %d, sizeof p is %d",sys.getsizeof(w),sys.getsizeof(p))
 		self.__wordList,self.__posList=w,p
+		self.logger.debug('idx file loaded.')
 
 	def __readUntilZero(self,fileObj,maxRead=0,debug=False):
 		if maxRead:
@@ -876,6 +903,8 @@ class RSSFile(object):
 
 	def setExit(self):
 		'''设置退出标志使工作线程退出'''
+		# TODO: 需要等待线程 thread4Plist 先退出，否则console可能看到异常：
+		# Unhandled exception in thread started by <bound method RSSFile.thread4Plist of <contentcontainer.RSSFile object at 0x01E73CD0>>
 		self.eventExit.set()
 
 	def reset(self):

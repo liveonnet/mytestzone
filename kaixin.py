@@ -1710,10 +1710,12 @@ class Kaixin(object):
 				rurl=r.geturl()
 				self.statisticsWebAccess(url)
 				break
+			except socket.gaierror as e:
+				logging.info("获取地址失败! %s",e)
 			except urllib.error.HTTPError as e:
-				logging.exception("请求出错！ %s",e)
+				logging.info("请求出错！ %s",e)
 			except urllib.error.URLError as e:
-				logging.exception("访问地址 %s 失败! %s",url,e)
+				logging.info("访问地址 %s 失败! %s",url,e)
 			except IOError as e:
 				logging.info("IO错误! %s",e)
 			except Exception as e:

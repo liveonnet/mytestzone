@@ -151,8 +151,7 @@ class BasePanel(object):
 		self.root.attributes("-alpha", self.c.alpha) # use transparency level 0.1 to 1.0 (no transparency)
 
 		# TTS
-		if self.c.tts_read:
-			self.tts.setVoiceCharacter(self.c.tts_chinese_voice,self.c.tts_english_voice)
+		self.tts.setVoiceCharacter(self.c.tts_chinese_voice,self.c.tts_english_voice)
 
 	def saveCfg(self,cfg,section=None):
 		if not section:
@@ -184,8 +183,9 @@ class BasePanel(object):
 		self.menu.add_separator()
 
 	def onCmdToggleTts(self,extra=None):
-		self.c.tts_read=True if self.tts_stat.get()==1 else False
+		self.c.tts_read=(True if self.tts_stat.get()==1 else False)
 		self.logger.debug('now self.c.tts_read=%s',self.c.tts_read)
+
 
 
 	def hide(self):
@@ -1172,7 +1172,7 @@ class DictionaryPanel(BasePanel):
 
 	def show(self):
 		BasePanel.show(self)
-		self.vInput.set('input word here:')
+		self.vInput.set('') # self.vInput.set('input word here:')
 		self.entryInput.select_range(0,tkinter.END)
 		self.entryInput.icursor(tkinter.END)
 		self.entryInput.focus_force()
