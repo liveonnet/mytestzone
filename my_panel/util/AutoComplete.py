@@ -30,7 +30,7 @@ class AutoComplete(object):
 		self.win.bind("<KeyRelease>", self.onKeyRelease)
 
 		if not suggestlist and __name__=='__main__':
-			suggestlist=[x for x in open(r'd:\word.txt').readlines() if x.rstrip()!=0]
+			suggestlist=[x.rstrip() for x in open(r'/mnt/driver_D/word.txt').readlines() if x.rstrip()!='']
 		self.suggestlist=suggestlist
 
 
@@ -334,8 +334,36 @@ class AutoComplete(object):
 
 # Test
 if __name__ == '__main__':
-	t = tkinter.Entry(font=('courier', 10))
+	logging.basicConfig(level=logging.DEBUG,format='%(thread)d %(asctime)s %(message)s',datefmt= '%H:%M:%S')
+	app=tkinter.Tk()
+	app.wm_attributes("-topmost", 1) # set to Top Most
+	app.overrideredirect(True) # 不显示titlebar
+	def fun(*args,**kwargs):
+		logging.debug('called. %s', vInput.get())
+		if app.overrideredirect():
+			app.overrideredirect(False)
+		else:
+			app.overrideredirect(True)
+			app.focusmodel(tkinter.ACTIVE)
+			t.focus_force()
+		app.withdraw()
+		app.deiconify()
+
+##	app.wm_attributes('-fullscreen')
+	container=tkinter.Frame(app,bd=0,padx=0,pady=0,relief=tkinter.RIDGE)
+
+	vInput=tkinter.StringVar()
+	t = tkinter.Entry(container,font=('courier', 10),textvariable=vInput)
 	t.pack()
+	btn=tkinter.Button(container,text='do',command=fun)
+	btn.pack()
+	container.pack(expand=True,fill=tkinter.BOTH)
 ##    t.insert("end", "import Tkinter\nt = Tkinter")
-	a = AutoComplete(t)
-	t.mainloop()
+
+	a = AutoComplete(t,fun)
+	t.focus_force()
+##	t.grab_set()
+	app.tkraise()
+	app.update()
+	app.geometry('+200+200')
+	app.mainloop()

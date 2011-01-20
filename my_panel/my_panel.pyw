@@ -69,7 +69,10 @@ class MyPanelApp(object):
 		self.root.wm_attributes("-topmost", 1) # set to Top Most
 		# 绑定事件
 		self.root.bind('<Button-3>',self.onRightMouse)
-		self.root.overrideredirect(True) # 不显示titlebar
+		if not (sys.platform in ('linux','linux2')):
+			self.root.overrideredirect(True) # 不显示titlebar
+		else:
+			self.root.title('my_panel')
 
 
 		# 设置右键菜单
@@ -86,7 +89,7 @@ class MyPanelApp(object):
 				self.menubar.invoke(tkinter.END) # set cur panel as checked
 		self.menubar.add_separator()
 
-		self.menubar.add_cascade(label='Quit',command=self.onQuit)
+		self.menubar.add_command(label='Quit',command=self.onQuit)
 
 
 	def switchMode(self):
@@ -153,7 +156,9 @@ class MyPanelApp(object):
 
 		self.cfg.write(codecs.open(self.inifile,'w',self.inifile_encoding))
 		self.root.quit()
-	def onRightMouse(self,event):
+
+
+	def onRightMouse(self,event):
 		'''右键选择菜单'''
 		self.menubar.post(event.x_root,event.y_root)
 
@@ -171,7 +176,10 @@ if __name__=='__main__':
 		sys.exit()
 	else:
 ##		print ('successful')
-		m=MyPanelApp()
+		if sys.platform in ('linux,linux2'):
+			m=MyPanelApp('my_panel-linux.ini')
+		else:
+			m=MyPanelApp()
 		m.run()
 
 	input('press ENTER to exit...')

@@ -63,11 +63,15 @@ class SubtitleFile(object):
 		except UnicodeDecodeError:
 			self.wordlist=codecs.open(fname,encoding='utf8').readlines()
 
-		self.logger.debug('use %s to split...',repr(os.linesep*2))
-		self._wordlist=re.split(os.linesep*2,''.join(self.wordlist))
+##		self.logger.debug('use %s to split...',repr(os.linesep*2))
+		self.logger.debug('use %s to split...','\r\n'*2)
+##		self._wordlist=re.split(os.linesep*2,''.join(self.wordlist))
+		self._wordlist=re.split('\r\n'*2,''.join(self.wordlist))
 		if len(self._wordlist)<10:
-			self.logger.debug('use %s to split...',repr(os.linesep))
-			self._wordlist=re.split(os.linesep,''.join(self.wordlist))
+##			self.logger.debug('use %s to split...',repr(os.linesep))
+			self.logger.debug('use %s to split...','\n'*2)
+##			self._wordlist=re.split(os.linesep,''.join(self.wordlist))
+			self._wordlist=re.split('\n'*2,''.join(self.wordlist))
 
 		self.wordlist=self._wordlist
 		self.logger.debug('len(self.wordlist)=%d',len(self.wordlist))
@@ -420,52 +424,17 @@ class StartDictFile(object):
 
 
 	def Dict2Txt(self,ofilename):
-		self.readIFO()
-		idxFile=""
-		dictFile=""
-		with open(self.__idxFileName,'rb') as f:
-			idxFile=f.read()
-		lenidx=len(idxFile)
-		with open(self.__dictFileName,'rb') as f:
-			dictFile=f.read()
-		lendict=len(dictFile)
-		of=open(ofilename,'w')
-		wordCnt=0
-		s=[]
-		idx=0
-		try:
-			while True:
-				old_idx=idx
-				while idx<lenidx:
-					if idxFile[idx]=='\0':
-						break
-					idx+=1
+		if self.__wordList:
+			self.readIFO()
+			self.readIDX()
 
-				if old_idx==idx:
-					self.logger.debug("wordStr=\"\",break!")
-					break
+		if self.__wordList:
+			with open(ofilename,'w') as f:
+				f.write(os.linesep.join(self.__wordList))
+				self.logger.info('dict data exported to %s.',ofilename)
+		else:
+			self.logger.debug('can\'t export dict data!')
 
-				wordStr=buffer(idxFile,old_idx,idx-old_idx)
-#				offset=ord(idxFile[idx+1])<<24|ord(idxFile[idx+2])<<16|ord(idxFile[idx+3])<<8|ord(idxFile[idx+4])
-				offset=struct.unpack_from(">i",idxFile,idx+1)[0]
-#				size=ord(idxFile[idx+5])<<24|ord(idxFile[idx+6])<<16|ord(idxFile[idx+7])<<8|ord(idxFile[idx+8])
-				size=struct.unpack_from(">i",idxFile,idx+5)[0]
-
-#				self.logger.debug("wordStr=%s,offset=%d,size=%d",wordStr,offset,size)
-				idx+=9
-
-#				wordCnt+=1
-#				if wordCnt>10:
-#					break
-
-				strText=dictFile[offset:offset+size].replace('\n','\\n')
-				s.append("%s\t%s\n"%(wordStr,strText))
-
-			of.writelines(s)
-		finally:
-			of.close()
-
-		self.logger.debug("done.")
 
 
 class C4GRApi(object):
@@ -953,18 +922,21 @@ if __name__ == '__main__':
 ##	t.getReadingList()
 
 
-	t=StartDictFile(r'D:\Program Files\StarDict\dic\stardict-langdao-ec-gb-2.4.2\langdao-ec-gb.ifo')
+##	t=StartDictFile(r'D:\Program Files\StarDict\dic\stardict-langdao-ec-gb-2.4.2\langdao-ec-gb.ifo')
+	t=StartDictFile(r'/mnt/driver_D/Program Files/StarDict/dic/stardict-langdao-ec-gb-2.4.2/langdao-ec-gb.ifo')
 	t.readIFO()
 	start=time.time()
 	t.readIDX()
+	t.Dict2Txt('/media/driver_D/word.txt')
 	print('%.3f'%(time.time()-start,))
 	print(t.getMeaning('test'))
 	import sys
 	sys.exit()
 
 	import cProfile,pstats
-	cProfile.runctx('''t.readIDX()''',globals(),locals(),r'd:\stardict-profile.txt')
-	p=pstats.Stats(r'd:\stardict-profile.txt')
+	cProfile.runctx('''t.readIDX()''',globals(),locals(),r'/mnt/driver_D/stardict-profile.dat')
+##	p=pstats.Stats(r'd:\stardict-profile.txt')
+	p=pstats.Stats(r'/mnt/driver_D/stardict-profile.txt')
 	p.sort_stats('time', 'cum').print_stats('')
 
 ##	input('press ENTER to exit...')

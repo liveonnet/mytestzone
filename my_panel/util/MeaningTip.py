@@ -99,6 +99,8 @@ class MeaningTip(object):
 
 	def coords(self):
 		tw = self.master.master
+		if not tw:
+			tw=self.master
 		tw.update_idletasks()
 		twx, twy = self.text.winfo_reqwidth()+self.sb.winfo_reqwidth(),self.text.winfo_reqheight()
 		w, h = tw.winfo_screenwidth(), tw.winfo_screenheight()

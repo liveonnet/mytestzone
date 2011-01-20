@@ -27,7 +27,11 @@ from contentcontainer import WordFile
 from contentcontainer import SubtitleFile
 from contentcontainer import StartDictFile
 from contentcontainer import RSSFile
-import util.Tts
+try:
+	import util.Tts
+except ImportError:
+	print('tts not supported!')
+	pass
 
 
 class BasePanel(object):
@@ -53,7 +57,10 @@ class BasePanel(object):
 
 		# TTS
 ##		self.tts=None
-		self.tts=util.Tts.TtsVoice()
+		try:
+			self.tts=util.Tts.TtsVoice()
+		except (NameError,):
+			self.tts=None
 		self.tts_stat=tkinter.IntVar()
 
 	def bindLeftMouse(self):
@@ -151,7 +158,8 @@ class BasePanel(object):
 		self.root.attributes("-alpha", self.c.alpha) # use transparency level 0.1 to 1.0 (no transparency)
 
 		# TTS
-		self.tts.setVoiceCharacter(self.c.tts_chinese_voice,self.c.tts_english_voice)
+		if self.tts:
+			self.tts.setVoiceCharacter(self.c.tts_chinese_voice,self.c.tts_english_voice)
 
 	def saveCfg(self,cfg,section=None):
 		if not section:
@@ -1065,6 +1073,8 @@ class DictionaryPanel(BasePanel):
 		self.container=tkinter.Frame(root,bd=0,padx=0,pady=0,relief=tkinter.RIDGE)
 		self.ft = tkFont.Font(family = 'Fixdsys',size = 15,weight = tkFont.BOLD)
 		self.mtft = tkFont.Font(family = 'Fixdsys',size = 12) # meaningtip字体
+##		self.ft = tkFont.Font(family = 'courier',size = 15,weight = tkFont.BOLD)
+##		self.mtft = tkFont.Font(family = 'courier',size = 12) # meaningtip字体
 
 		self.labelInput=tkinter.Label(self.container,font=self.ft,text='word: ')
 		self.labelInput.grid(row=0,column=0,padx=0,pady=0,sticky=tkinter.EW)
@@ -1074,6 +1084,7 @@ class DictionaryPanel(BasePanel):
 		self.offsetx,self.offsety=0,0
 
 		self.entryInput=tkinter.Entry(self.container,font=self.ft,bd=0,textvariable=self.vInput)
+##		self.entryInput=tkinter.Entry(self.container,font=('courier', 10))
 		self.FirstIn=True
 ##		self.entryInput.bind('<Activate>',self.entryInput.focus_get,'+')
 ##		self.entryInput.bind('<Activate>',lambda ev:self.entryInput.select_range(0, tkinter.END),'+')
@@ -1108,10 +1119,13 @@ class DictionaryPanel(BasePanel):
 
 	def _InputClickedByLeftMouse(self,event):
 		self.logger.debug('FirstIn=%s',self.FirstIn)
+##		self.entryInput.bind("<KeyRelease>", self.ac.onKeyRelease)
+		self.logger.debug('focus_get()==self.entryInput: %s',self.entryInput.focus_get()==self.entryInput)
+		self.logger.debug('focus_get()==self.root: %s',self.entryInput.focus_get()==self.root)
 		if self.FirstIn:
 			self.logger.debug('select all~')
 			self.entryInput.select_range(0, tkinter.END)
-			self.labelInput.focus_set()
+##			self.labelInput.focus_set()
 
 ##	def _InputFocusOut(self,event):
 ##		self.logger.debug('focusout')
@@ -1131,6 +1145,7 @@ class DictionaryPanel(BasePanel):
 		BasePanel.loadCfg(self,cfg,section)
 		self.c.cur=cfg.getint(section,'cur')
 		self.c.recent_dir=cfg.get(section,'recent_dir')
+		self.c.historyfile=cfg.get(section,'historyfile')
 
 	def saveCfg(self,cfg,section=None):
 		BasePanel.saveCfg(self,cfg,section)
@@ -1138,6 +1153,7 @@ class DictionaryPanel(BasePanel):
 			section=self.section
 		cfg.set(section,'cur',str(self.c.cur))
 		cfg.set(section,'recent_dir',self.c.recent_dir)
+		cfg.set(section,'historyfile',self.c.historyfile)
 
 
 	def applyCfg(self):
@@ -1172,7 +1188,7 @@ class DictionaryPanel(BasePanel):
 
 	def show(self):
 		BasePanel.show(self)
-		self.vInput.set('') # self.vInput.set('input word here:')
+		self.vInput.set('input word here:')
 		self.entryInput.select_range(0,tkinter.END)
 		self.entryInput.icursor(tkinter.END)
 		self.entryInput.focus_force()
@@ -1194,7 +1210,10 @@ class DictionaryPanel(BasePanel):
 
 		self.container.pack(expand=True,fill=tkinter.BOTH)
 		self.root.geometry('%dx%d%s'%(self.curgeometry[0],self.curgeometry[1],self.c.position))
-##		self.container.geometry('%dx%d'%(640,480))
+
+		# make fixed size
+		self.root.minsize(*self.curgeometry)
+		self.root.maxsize(*self.curgeometry)
 
 	def hide(self):
 		BasePanel.hide(self)
@@ -1317,4 +1336,4 @@ class DictionaryPanel(BasePanel):
 			text=self.entryInput.get()
 
 		if text:
-			open(r'd:\stored_words.txt','a').write(' '.join((datetime.datetime.now().strftime('%Y.%m.%d %H:%M:%S'),text,'\n')))
+			open(self.c.historyfile,'a').write(' '.join((datetime.datetime.now().strftime('%Y.%m.%d %H:%M:%S'),text,'\n')))
