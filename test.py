@@ -3390,3 +3390,25 @@
 ##y.goo(6,7)
 ##print('-*'*20)
 ##y.too(8,9)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### 获取CPU(核)的数量
+##import multiprocessing, os
+##print('%d'%os.sysconf("SC_NPROCESSORS_CONF"))
+##print('%d'%multiprocessing.cpu_count())
