@@ -2751,7 +2751,7 @@ class Kaixin(object):
 						fightlist=re.finditer(pEach,m.group(1))
 						for i in fightlist:
 							key,name,level,number=i.group('key'),i.group('name'),int(i.group('level')),int(i.group('number'))
-							if level<mylevel-1 and number<mynumber-4: # 选比自己差的团队
+							if level<mylevel-1 and number<mynumber-5: # 选比自己差的团队
 								flist.append((name,key,level,number))
 								logging.debug("%s 可选对战团队 %s(%d-%d)",task_key,name,level,number)
 
@@ -2764,7 +2764,7 @@ class Kaixin(object):
 							if stopfight==True:
 								break
 
-							for _ in range(5): # 每个团队战5次
+							for _ in range(3): # 每个团队战5次
 								if self.exitevent.is_set():
 									logging.info("%s 检测到退出信号",task_key)
 									stopfight=True
