@@ -2546,7 +2546,10 @@ class Kaixin(object):
 				id=i.xpath('id')[0].text
 				ids.append(id)
 
-			ofnamebase=r'd:\gardenspirit\%s'%(datetime.datetime.now().strftime("%Y%m%d-%H%M%S%f"),)
+			if sys.platform=='linux2':
+				ofnamebase='/home/kevin/gardenspirit/%s'%(datetime.datetime.now().strftime("%Y%m%d-%H%M%S%f"),)
+			else:
+				ofnamebase=r'd:\gardenspirit\%s'%(datetime.datetime.now().strftime("%Y%m%d-%H%M%S%f"),)
 			for i in range(8):
 				# 获取问题图片
 				tpic=tree.xpath('tpic')[0].text
@@ -2616,7 +2619,10 @@ class Kaixin(object):
 		datadate,timegroup=name.split('-',1)
 		seedids=','.join(ids)
 		logging.info("datadate=%s,timegroup=%s,ids=%s",datadate,timegroup,seedids)
-		subproc = subprocess.Popen(['d:\\python26\\python.exe', 'E:\\Proj\\python\\svn\\branches\\20091224\\t.py'], stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,shell=False)
+		if sys.platform=='linux2':
+			subproc = subprocess.Popen(['/usr/bin/python', '/home/kevin/proj/svn/branches/20091224/t.py'], stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,shell=False)
+		else:
+			subproc = subprocess.Popen(['d:\\python26\\python.exe', 'E:\\Proj\\python\\svn\\branches\\20091224\\t.py'], stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,shell=False)
 
 		args2send='%s|%s|%s'%(datadate,timegroup,seedids)
 		logging.info("发送 %s ...",args2send)
